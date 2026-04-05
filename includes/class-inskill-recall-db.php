@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 class InSkill_Recall_DB {
-    const DB_VERSION = '0.6.2';
+    const DB_VERSION = '0.6.3';
 
     public static function table($name) {
         global $wpdb;
@@ -28,6 +28,7 @@ class InSkill_Recall_DB {
 
     public static function activate() {
         self::create_tables();
+        self::run_data_migrations();
         self::seed_defaults();
         update_option('inskill_recall_db_version', self::DB_VERSION);
     }
@@ -37,6 +38,7 @@ class InSkill_Recall_DB {
 
         if ($installed !== self::DB_VERSION) {
             self::create_tables();
+            self::run_data_migrations();
             self::seed_defaults();
             update_option('inskill_recall_db_version', self::DB_VERSION);
         }
@@ -72,7 +74,7 @@ class InSkill_Recall_DB {
             status VARCHAR(20) NOT NULL DEFAULT 'active',
             notification_hour TINYINT UNSIGNED NOT NULL DEFAULT 9,
             notification_minute TINYINT UNSIGNED NOT NULL DEFAULT 0,
-            notification_timezone VARCHAR(100) NOT NULL DEFAULT 'Europe/Paris',
+            notification_timezone VARCHAR(100) NOT NULL DEFAULT 'Africa/Casablanca',
             notifications_weekend TINYINT(1) NOT NULL DEFAULT 0,
             last_access_at DATETIME NULL,
             last_notified_at DATETIME NULL,
@@ -134,6 +136,7 @@ class InSkill_Recall_DB {
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             group_id BIGINT UNSIGNED NOT NULL,
             internal_label VARCHAR(191) NULL,
+            question_type VARCHAR(10) NOT NULL DEFAULT 'qcu',
             question_text LONGTEXT NOT NULL,
             explanation LONGTEXT NULL,
             image_id BIGINT UNSIGNED NULL,
@@ -143,7 +146,7 @@ class InSkill_Recall_DB {
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             PRIMARY KEY  (id),
-            KEY idx_group_status_order (group_id, status, sort_order)
+            KEY idx_group_status_order (group_id, status, internal_label(32), id)
         ) {$charset_collate};";
 
         $sql[] = "CREATE TABLE {$question_choices_table} (
@@ -165,50 +168,37 @@ class InSkill_Recall_DB {
             group_id BIGINT UNSIGNED NOT NULL,
             recall_user_id BIGINT UNSIGNED NOT NULL,
             question_id BIGINT UNSIGNED NOT NULL,
-
             question_order_index INT NOT NULL DEFAULT 0,
             is_initially_assigned TINYINT(1) NOT NULL DEFAULT 0,
-
             injection_chain_number TINYINT UNSIGNED NULL,
             parent_progress_id BIGINT UNSIGNED NULL,
-
             current_level VARCHAR(20) NOT NULL DEFAULT 'nv0',
             current_state VARCHAR(20) NOT NULL DEFAULT 'active',
-
             first_presented_at DATETIME NULL,
             first_answered_at DATETIME NULL,
             last_presented_at DATETIME NULL,
             last_answered_at DATETIME NULL,
             last_result VARCHAR(20) NULL,
-
             next_due_date DATE NULL,
             next_due_at DATETIME NULL,
-
             downgrade_on_date DATE NULL,
             downgrade_at DATETIME NULL,
-
             consecutive_unanswered_days INT NOT NULL DEFAULT 0,
-
             total_presentations_count INT NOT NULL DEFAULT 0,
             total_answers_count INT NOT NULL DEFAULT 0,
             total_correct_count INT NOT NULL DEFAULT 0,
             total_incorrect_count INT NOT NULL DEFAULT 0,
             total_unanswered_count INT NOT NULL DEFAULT 0,
-
             awarded_nv1_points TINYINT(1) NOT NULL DEFAULT 0,
             awarded_nv2_points TINYINT(1) NOT NULL DEFAULT 0,
             awarded_nv3_points TINYINT(1) NOT NULL DEFAULT 0,
             awarded_nv4_points TINYINT(1) NOT NULL DEFAULT 0,
             awarded_nv5_points TINYINT(1) NOT NULL DEFAULT 0,
-
             speed_bonus_count INT NOT NULL DEFAULT 0,
             penalty_points_total INT NOT NULL DEFAULT 0,
-
             mastered_at DATETIME NULL,
-
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
-
             PRIMARY KEY  (id),
             UNIQUE KEY uniq_user_question (group_id, recall_user_id, question_id),
             KEY idx_user_group_due (recall_user_id, group_id, next_due_at),
@@ -224,27 +214,20 @@ class InSkill_Recall_DB {
             recall_user_id BIGINT UNSIGNED NOT NULL,
             question_id BIGINT UNSIGNED NOT NULL,
             progress_id BIGINT UNSIGNED NOT NULL,
-
             scheduled_date DATE NOT NULL,
             scheduled_at DATETIME NOT NULL,
-
             display_level VARCHAR(20) NOT NULL,
             effective_level VARCHAR(20) NULL,
-
             occurrence_type VARCHAR(20) NOT NULL DEFAULT 'review',
             status VARCHAR(30) NOT NULL DEFAULT 'pending',
-
             answered_at DATETIME NULL,
             selected_choice_ids_json LONGTEXT NULL,
             correct_choice_ids_json LONGTEXT NULL,
-
             points_awarded INT NOT NULL DEFAULT 0,
             speed_bonus_awarded INT NOT NULL DEFAULT 0,
             penalty_applied INT NOT NULL DEFAULT 0,
-
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
-
             PRIMARY KEY  (id),
             UNIQUE KEY uniq_daily_occurrence (progress_id, scheduled_date),
             KEY idx_user_date (recall_user_id, scheduled_date),
@@ -256,28 +239,21 @@ class InSkill_Recall_DB {
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             group_id BIGINT UNSIGNED NOT NULL,
             recall_user_id BIGINT UNSIGNED NOT NULL,
-
             participant_status VARCHAR(20) NOT NULL DEFAULT 'active',
-
             total_questions INT NOT NULL DEFAULT 0,
             introduced_questions INT NOT NULL DEFAULT 0,
             mastered_questions INT NOT NULL DEFAULT 0,
-
             score_total INT NOT NULL DEFAULT 0,
             speed_bonus_total INT NOT NULL DEFAULT 0,
             penalty_total INT NOT NULL DEFAULT 0,
-
             answers_total INT NOT NULL DEFAULT 0,
             correct_total INT NOT NULL DEFAULT 0,
             incorrect_total INT NOT NULL DEFAULT 0,
             unanswered_total INT NOT NULL DEFAULT 0,
-
             last_answer_at DATETIME NULL,
             last_activity_at DATETIME NULL,
-
             cached_rank INT NULL,
             updated_at DATETIME NOT NULL,
-
             PRIMARY KEY  (id),
             UNIQUE KEY uniq_group_user (group_id, recall_user_id),
             KEY idx_group_score (group_id, score_total),
@@ -306,6 +282,35 @@ class InSkill_Recall_DB {
         }
 
         self::drop_legacy_tables();
+    }
+
+    public static function run_data_migrations() {
+        global $wpdb;
+
+        $questions_table = self::table('questions');
+        $users_table = self::table('users');
+
+        $wpdb->query("UPDATE {$questions_table} SET question_type = 'qcu' WHERE question_type IS NULL OR question_type = ''");
+
+        $rows = $wpdb->get_results("SELECT id, internal_label FROM {$questions_table} ORDER BY id ASC");
+        foreach ($rows as $row) {
+            $label = trim((string) $row->internal_label);
+            if ($label === '') {
+                $wpdb->update(
+                    $questions_table,
+                    [
+                        'internal_label' => sprintf('Q%07d', (int) $row->id),
+                        'updated_at'     => current_time('mysql'),
+                    ],
+                    ['id' => (int) $row->id]
+                );
+            }
+        }
+
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$users_table} SET notification_timezone = %s WHERE notification_timezone IS NULL OR notification_timezone = '' OR notification_timezone = 'Europe/Paris'",
+            InSkill_Recall_Auth::DEFAULT_NOTIFICATION_TIMEZONE
+        ));
     }
 
     public static function drop_legacy_tables() {
@@ -363,9 +368,10 @@ class InSkill_Recall_DB {
     }
 
     private static function get_default_allowed_timezones_raw() {
-        return implode("\n", [
-            'France — Paris|Europe/Paris',
-            'Maroc — Casablanca|Africa/Casablanca',
+        return implode("
+", [
+            'Maroc - Casablanca|Africa/Casablanca',
+            'France - Paris|Europe/Paris',
         ]);
     }
 }

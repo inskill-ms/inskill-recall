@@ -299,11 +299,11 @@ class InSkill_Recall_Frontend {
         global $wpdb;
 
         return $wpdb->get_results($wpdb->prepare(
-            "SELECT id, internal_label, question_text, sort_order
+            "SELECT id, internal_label, question_text
              FROM " . InSkill_Recall_DB::table('questions') . "
              WHERE group_id = %d
                AND status = 'active'
-             ORDER BY sort_order ASC, id ASC",
+             ORDER BY internal_label ASC, id ASC",
             (int) $group_id
         ));
     }
@@ -433,7 +433,7 @@ class InSkill_Recall_Frontend {
             'queue' => array_map([$this, 'format_occurrence_list_row'], $queue),
             'history' => array_map([$this, 'format_occurrence_list_row'], $history),
             'upcoming' => array_map([$this, 'format_upcoming_row'], $upcoming),
-            'question_index' => array_map([$this, 'format_question_index_row'], $this->get_group_question_index((int) $group->id)),
+            'question_index' => $this->format_question_index_rows($this->get_group_question_index((int) $group->id)),
             'leaderboard' => array_map([$this, 'format_leaderboard_row'], $this->get_leaderboard_for_group($group)),
             'preferences' => InSkill_Recall_Auth::get_notification_preferences($user),
         ];
@@ -461,12 +461,21 @@ class InSkill_Recall_Frontend {
         ];
     }
 
-    protected function format_question_index_row($row) {
-        return [
-            'question_id' => (int) $row->id,
-            'label' => !empty($row->internal_label) ? (string) $row->internal_label : ('Q' . (int) $row->id),
-            'question_text' => wp_strip_all_tags((string) $row->question_text),
-        ];
+    protected function format_question_index_rows($rows) {
+        $formatted = [];
+        $position = 1;
+
+        foreach ((array) $rows as $row) {
+            $formatted[] = [
+                'question_id' => (int) $row->id,
+                'number' => $position,
+                'internal_label' => !empty($row->internal_label) ? (string) $row->internal_label : ('Q' . (int) $row->id),
+                'question_text' => wp_strip_all_tags((string) $row->question_text),
+            ];
+            $position++;
+        }
+
+        return $formatted;
     }
 
     protected function format_leaderboard_row($row) {
@@ -519,6 +528,7 @@ class InSkill_Recall_Frontend {
         return [
             'occurrence_id' => (int) $occurrence->id,
             'question_id' => (int) $question->id,
+            'question_type' => !empty($question->question_type) ? (string) $question->question_type : 'qcu',
             'question_text' => wp_kses_post($question->question_text),
             'explanation' => wp_kses_post($question->explanation),
             'image_url' => $question->image_id ? wp_get_attachment_image_url($question->image_id, 'large') : $question->image_url,
@@ -658,3 +668,5 @@ class InSkill_Recall_Frontend {
         ]);
     }
 }
+
+

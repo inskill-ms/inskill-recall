@@ -13,6 +13,38 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
     return null;
   }
 
+  function getQuestionNumberMap(groupPayload) {
+    const map = {};
+    const rows = groupPayload && Array.isArray(groupPayload.question_index) ? groupPayload.question_index : [];
+
+    rows.forEach(function (row, index) {
+      map[String(row.question_id)] = index + 1;
+    });
+
+    return map;
+  }
+
+  function getQuestionMeta(groupPayload, questionId) {
+    const rows = groupPayload && Array.isArray(groupPayload.question_index) ? groupPayload.question_index : [];
+    const targetId = Number(questionId);
+
+    for (let i = 0; i < rows.length; i++) {
+      if (Number(rows[i].question_id) === targetId) {
+        return {
+          displayNumber: i + 1,
+          questionText: rows[i].question_text || '',
+          internalLabel: rows[i].internal_label || rows[i].label || ''
+        };
+      }
+    }
+
+    return {
+      displayNumber: targetId,
+      questionText: '',
+      internalLabel: ''
+    };
+  }
+
   function reloadState(callback) {
     Api.getDashboard()
       .done(function (resp) {
@@ -85,9 +117,9 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
         '<button class="inskill-btn inskill-open-queue" data-group-id="' + Utils.esc(group.id) + '">' + Utils.esc(summary.action_label || InSkillRecall.labels.start) + '</button>',
         '</div>',
 
-        renderQueuePreview(queue),
-        renderHistory(history),
-        renderUpcoming(upcoming),
+        renderQueuePreview(groupPayload, queue),
+        renderHistory(groupPayload, history),
+        renderUpcoming(groupPayload, upcoming),
         renderQuestionIndex(questionIndex),
         renderLeaderboard(leaderboard),
         Preferences.renderPreferencesBox(prefsState),
@@ -99,7 +131,7 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
     $app.html(blocks.join(''));
   }
 
-  function renderQueuePreview(queue) {
+  function renderQueuePreview(groupPayload, queue) {
     const rows = Array.isArray(queue) ? queue : [];
 
     let html = '<div class="inskill-section"><h3>' + Utils.esc(InSkillRecall.labels.questionListTitle || 'Questions du jour') + '</h3>';
@@ -111,8 +143,15 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
 
     html += '<div class="inskill-list">';
     rows.forEach(function (row) {
+      const meta = getQuestionMeta(groupPayload, row.question_id);
+
       html += '<div class="inskill-list-row">';
-      html += '<div><strong>Q' + Utils.esc(row.question_id) + '</strong> — ' + Utils.esc(row.display_level || '') + '</div>';
+      html += '<div>';
+      html += '<strong>Q' + Utils.esc(meta.displayNumber) + '</strong> — ' + Utils.esc(row.display_level || '');
+      html += '<div class="inskill-list-subtext">';
+      html += Utils.esc(meta.questionText || '');
+      html += '</div>';
+      html += '</div>';
       html += '<div>' + Utils.esc(Utils.toOccurrenceStatusLabel(row.status)) + '</div>';
       html += '</div>';
     });
@@ -121,7 +160,7 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
     return html;
   }
 
-  function renderHistory(history) {
+  function renderHistory(groupPayload, history) {
     const rows = Array.isArray(history) ? history : [];
 
     let html = '<div class="inskill-section"><h3>' + Utils.esc(InSkillRecall.labels.calendarTitle || 'Historique') + '</h3>';
@@ -133,9 +172,11 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
 
     html += '<div class="inskill-list">';
     rows.forEach(function (row) {
+      const meta = getQuestionMeta(groupPayload, row.question_id);
+
       html += '<div class="inskill-list-row">';
       html += '<div>' + Utils.esc(row.scheduled_date) + '</div>';
-      html += '<div>Q' + Utils.esc(row.question_id) + ' — ' + Utils.esc(row.display_level || '') + ' — ' + Utils.esc(Utils.toOccurrenceStatusIcon(row.status)) + '</div>';
+      html += '<div>Q' + Utils.esc(meta.displayNumber) + ' — ' + Utils.esc(row.display_level || '') + ' — ' + Utils.esc(Utils.toOccurrenceStatusIcon(row.status)) + '</div>';
       html += '</div>';
     });
     html += '</div></div>';
@@ -143,7 +184,7 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
     return html;
   }
 
-  function renderUpcoming(upcoming) {
+  function renderUpcoming(groupPayload, upcoming) {
     const rows = Array.isArray(upcoming) ? upcoming : [];
 
     let html = '<div class="inskill-section"><h3>' + Utils.esc(InSkillRecall.labels.upcomingTitle || 'Prochains rappels') + '</h3>';
@@ -155,8 +196,10 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
 
     html += '<div class="inskill-list">';
     rows.forEach(function (row) {
+      const meta = getQuestionMeta(groupPayload, row.question_id);
+
       html += '<div class="inskill-list-row">';
-      html += '<div>Q' + Utils.esc(row.question_id) + ' (' + Utils.esc(row.current_level || '') + ')</div>';
+      html += '<div>Q' + Utils.esc(meta.displayNumber) + ' (' + Utils.esc(row.current_level || '') + ')</div>';
       html += '<div>' + Utils.esc(row.scheduled_date) + '</div>';
       html += '</div>';
     });
@@ -176,10 +219,10 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
     }
 
     html += '<div class="inskill-list">';
-    rows.forEach(function (row) {
-      html += '<div class="inskill-list-row">';
-      html += '<div><strong>' + Utils.esc(row.label || ('Q' + row.question_id)) + '</strong></div>';
-      html += '<div>' + Utils.esc(Utils.truncate(row.question_text || '', 120)) + '</div>';
+    rows.forEach(function (row, index) {
+      html += '<div class="inskill-list-row inskill-list-row-index">';
+      html += '<div><strong>Q' + Utils.esc(index + 1) + '</strong></div>';
+      html += '<div class="inskill-index-text">' + Utils.esc(Utils.truncate(row.question_text || '', 120)) + '</div>';
       html += '</div>';
     });
     html += '</div></div>';
@@ -247,8 +290,15 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
 
     html += '<div class="inskill-list">';
     pendingRows.forEach(function (row, index) {
+      const meta = getQuestionMeta(groupPayload, row.question_id);
+
       html += '<div class="inskill-list-row">';
-      html += '<div><strong>Q' + Utils.esc(row.question_id) + '</strong> — ' + Utils.esc(row.display_level || '') + '</div>';
+      html += '<div>';
+      html += '<strong>Q' + Utils.esc(meta.displayNumber) + '</strong> — ' + Utils.esc(row.display_level || '');
+      html += '<div class="inskill-list-subtext">';
+      html += Utils.esc(meta.questionText || '');
+      html += '</div>';
+      html += '</div>';
       html += '<div><button class="inskill-btn inskill-btn-secondary inskill-open-question" data-group-id="' + Utils.esc(groupId) + '" data-occurrence-id="' + Utils.esc(row.occurrence_id) + '" data-index="' + Utils.esc(index) + '">Ouvrir</button></div>';
       html += '</div>';
     });
@@ -285,10 +335,12 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
 
         const item = resp.data;
         const choices = Array.isArray(item.choices) ? item.choices : [];
+        const groupPayload = getGroupById(state, groupId);
+        const meta = getQuestionMeta(groupPayload, item.question_id);
 
         let html = '';
         html += '<div class="inskill-recall-box">';
-        html += '<div class="inskill-recall-meta"><span>' + Utils.esc(item.display_level || '') + '</span><span>Q' + Utils.esc(item.question_id) + '</span></div>';
+        html += '<div class="inskill-recall-meta"><span>' + Utils.esc(item.display_level || '') + '</span><span>Q' + Utils.esc(meta.displayNumber) + '</span></div>';
         html += '<div class="inskill-question">' + item.question_text + '</div>';
 
         if (item.image_url) {
@@ -299,8 +351,11 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
         choices.forEach(function (choice) {
           const checked = choice.selected ? ' checked' : '';
           const disabled = choice.disabled ? ' disabled' : '';
+          const inputType = item.question_type === 'qcu' ? 'radio' : 'checkbox';
+          const inputName = item.question_type === 'qcu' ? 'choice_ids_single' : 'choice_ids[]';
+
           html += '<label class="inskill-choice">';
-          html += '<input type="checkbox" name="choice_ids[]" value="' + choice.id + '"' + checked + disabled + '>';
+          html += '<input type="' + inputType + '" name="' + inputName + '" value="' + choice.id + '"' + checked + disabled + '>';
           html += '<span>' + choice.text + '</span>';
           html += '</label>';
         });
@@ -448,9 +503,12 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
         }
 
         const item = resp.data.question;
+        const currentGroupPayload = getGroupById(state, groupId);
+        const meta = getQuestionMeta(currentGroupPayload, item.question_id);
+
         let html = '';
         html += '<div class="inskill-recall-box">';
-        html += '<div class="inskill-recall-meta"><span>' + Utils.esc(item.display_level || '') + '</span><span>Q' + Utils.esc(item.question_id) + '</span></div>';
+        html += '<div class="inskill-recall-meta"><span>' + Utils.esc(item.display_level || '') + '</span><span>Q' + Utils.esc(meta.displayNumber) + '</span></div>';
         html += '<div class="inskill-question">' + item.question_text + '</div>';
 
         if (item.image_url) {

@@ -7,7 +7,7 @@ class InSkill_Recall_Auth {
     const DEFAULT_NOTIFICATION_HOUR = 9;
     const DEFAULT_NOTIFICATION_MINUTE = 0;
     const DEFAULT_NOTIFICATIONS_WEEKEND = 0;
-    const DEFAULT_NOTIFICATION_TIMEZONE = 'Europe/Paris';
+    const DEFAULT_NOTIFICATION_TIMEZONE = 'Africa/Casablanca';
 
     public static function generate_token() {
         return bin2hex(random_bytes(32));
@@ -101,8 +101,8 @@ class InSkill_Recall_Auth {
 
     public static function get_default_allowed_timezones_raw() {
         return implode("\n", [
-            'France — Paris|Europe/Paris',
             'Maroc — Casablanca|Africa/Casablanca',
+            'France — Paris|Europe/Paris',
         ]);
     }
 
@@ -150,18 +150,30 @@ class InSkill_Recall_Auth {
         }
 
         if (empty($choices)) {
-            $choices = self::parse_allowed_timezones_raw(self::get_default_allowed_timezones_raw());
+            $choices = [
+                'Africa/Casablanca' => 'Maroc — Casablanca',
+                'Europe/Paris'      => 'France — Paris',
+            ];
         }
 
         if (!isset($choices[self::DEFAULT_NOTIFICATION_TIMEZONE])) {
-            $choices = [self::DEFAULT_NOTIFICATION_TIMEZONE => 'France — Paris'] + $choices;
+            $defaultLabel = self::DEFAULT_NOTIFICATION_TIMEZONE === 'Africa/Casablanca'
+                ? 'Maroc — Casablanca'
+                : self::DEFAULT_NOTIFICATION_TIMEZONE;
+
+            $choices = [self::DEFAULT_NOTIFICATION_TIMEZONE => $defaultLabel] + $choices;
         }
 
         return $choices;
     }
 
     public static function get_allowed_timezones() {
-        $raw = (string) get_option('inskill_recall_allowed_timezones', self::get_default_allowed_timezones_raw());
+        $raw = get_option('inskill_recall_allowed_timezones', self::get_default_allowed_timezones_raw());
+
+        if (!is_string($raw)) {
+            $raw = self::get_default_allowed_timezones_raw();
+        }
+
         return self::parse_allowed_timezones_raw($raw);
     }
 

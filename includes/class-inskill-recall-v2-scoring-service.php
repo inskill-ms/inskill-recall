@@ -94,6 +94,7 @@ class InSkill_Recall_V2_Scoring_Service {
 
         $stats_table = self::get_stats_table();
         $progress_table = InSkill_Recall_DB::table('user_question_progress');
+        $questions_table = InSkill_Recall_DB::table('questions');
 
         self::get_or_create_stats_row($group_id, $recall_user_id);
 
@@ -103,8 +104,15 @@ class InSkill_Recall_V2_Scoring_Service {
             (int) $recall_user_id
         ));
 
-        $total_questions = count($progress_rows);
-        $introduced_questions = $total_questions;
+        $total_questions = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*)
+             FROM {$questions_table}
+             WHERE group_id = %d
+               AND status = 'active'",
+            (int) $group_id
+        ));
+
+        $introduced_questions = count($progress_rows);
         $mastered_questions = 0;
         $score_total = 0;
         $speed_bonus_total = 0;
@@ -137,26 +145,24 @@ class InSkill_Recall_V2_Scoring_Service {
                 $score_total += InSkill_Recall_V2_Progress_Service::get_level_points(InSkill_Recall_V2_Progress_Service::LEVEL_NV5);
             }
 
-            $speed_bonus_total += (int) $row->speed_bonus_count * 5;
+            $speed_bonus_total += (int) $row->speed_bonus_count;
             $penalty_total += (int) $row->penalty_points_total;
-
             $answers_total += (int) $row->total_answers_count;
             $correct_total += (int) $row->total_correct_count;
             $incorrect_total += (int) $row->total_incorrect_count;
             $unanswered_total += (int) $row->total_unanswered_count;
 
-            if (!empty($row->last_answered_at) && ($last_answer_at === null || strcmp($row->last_answered_at, $last_answer_at) > 0)) {
+            if (!empty($row->last_answered_at) && ($last_answer_at === null || $row->last_answered_at > $last_answer_at)) {
                 $last_answer_at = $row->last_answered_at;
             }
 
-            if (!empty($row->last_answered_at) && ($last_activity_at === null || strcmp($row->last_answered_at, $last_activity_at) > 0)) {
-                $last_activity_at = $row->last_answered_at;
-            } elseif (!empty($row->last_presented_at) && ($last_activity_at === null || strcmp($row->last_presented_at, $last_activity_at) > 0)) {
-                $last_activity_at = $row->last_presented_at;
+            if (!empty($row->updated_at) && ($last_activity_at === null || $row->updated_at > $last_activity_at)) {
+                $last_activity_at = $row->updated_at;
             }
         }
 
-        $score_total = $score_total + $speed_bonus_total - $penalty_total;
+        $score_total += $speed_bonus_total;
+        $score_total -= $penalty_total;
 
         $participant_status = InSkill_Recall_V2_Status_Service::compute_participant_status_from_values(
             $total_questions,

@@ -30,6 +30,17 @@ class InSkill_Recall_Admin_Page_Groups {
         echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($map[$message]) . '</p></div>';
     }
 
+    private function get_leaderboard_mode_label($mode) {
+        switch ((string) $mode) {
+            case 'A':
+                return 'Mode A : classement complet';
+            case 'C':
+                return 'Mode C : position personnelle uniquement';
+            default:
+                return 'Mode B : top dynamique + position personnelle';
+        }
+    }
+
     public function render() {
         $edit_group = null;
         $memberships = [];
@@ -83,12 +94,12 @@ class InSkill_Recall_Admin_Page_Groups {
                                 </td>
                             </tr>
                             <tr>
-                                <th><label for="leaderboard_mode">Mode classement</label></th>
+                                <th><label for="leaderboard_mode">Mode de classement</label></th>
                                 <td>
                                     <select name="leaderboard_mode" id="leaderboard_mode">
-                                        <option value="A" <?php selected($edit_group->leaderboard_mode ?? 'B', 'A'); ?>>A</option>
-                                        <option value="B" <?php selected($edit_group->leaderboard_mode ?? 'B', 'B'); ?>>B</option>
-                                        <option value="C" <?php selected($edit_group->leaderboard_mode ?? 'B', 'C'); ?>>C</option>
+                                        <option value="A" <?php selected($edit_group->leaderboard_mode ?? 'B', 'A'); ?>>Mode A : classement complet</option>
+                                        <option value="B" <?php selected($edit_group->leaderboard_mode ?? 'B', 'B'); ?>>Mode B : top dynamique + position personnelle</option>
+                                        <option value="C" <?php selected($edit_group->leaderboard_mode ?? 'B', 'C'); ?>>Mode C : position personnelle uniquement</option>
                                     </select>
                                 </td>
                             </tr>
@@ -156,8 +167,8 @@ class InSkill_Recall_Admin_Page_Groups {
                                         <td><?php echo esc_html($group->name); ?></td>
                                         <td><?php echo esc_html($group->start_date); ?></td>
                                         <td><?php echo esc_html($group->status); ?></td>
-                                        <td><?php echo esc_html($group->leaderboard_mode); ?></td>
-                                        <td><?php echo esc_html($group->question_order_mode); ?></td>
+                                        <td><?php echo esc_html($this->get_leaderboard_mode_label($group->leaderboard_mode)); ?></td>
+                                        <td><?php echo esc_html($group->question_order_mode === 'random' ? 'Aléatoire pour chacun' : 'Dans l’ordre'); ?></td>
                                         <td><?php echo esc_html((int) $group->participants_count); ?></td>
                                         <td><?php echo esc_html((int) $group->questions_count); ?></td>
                                         <td>

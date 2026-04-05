@@ -15,35 +15,30 @@ class InSkill_Recall_Admin_Actions {
             case 'create_dashboard_page':
                 $this->create_dashboard_page();
                 break;
-
             case 'save_user':
                 $this->save_user();
                 break;
-
             case 'delete_user':
                 $this->delete_user();
                 break;
-
             case 'regenerate_user_token':
                 $this->regenerate_user_token();
                 break;
-
             case 'save_group':
                 $this->save_group();
                 break;
-
             case 'delete_group':
                 $this->delete_group();
                 break;
-
             case 'save_question':
                 $this->save_question();
                 break;
-
             case 'delete_question':
                 $this->delete_question();
                 break;
-
+            case 'deactivate_question':
+                $this->deactivate_question();
+                break;
             case 'save_notification_settings':
                 $this->save_notification_settings();
                 break;
@@ -58,12 +53,7 @@ class InSkill_Recall_Admin_Actions {
 
     private function create_dashboard_page() {
         $page_id = InSkill_Recall_Frontend::ensure_dashboard_page_exists();
-
-        if ($page_id > 0) {
-            $this->redirect('inskill-recall', ['message' => 'dashboard_page_created']);
-        }
-
-        $this->redirect('inskill-recall', ['message' => 'dashboard_page_error']);
+        $this->redirect('inskill-recall', ['message' => $page_id > 0 ? 'dashboard_page_created' : 'dashboard_page_error']);
     }
 
     private function save_user() {
@@ -102,11 +92,9 @@ class InSkill_Recall_Admin_Actions {
 
     private function regenerate_user_token() {
         $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
-
         if ($user_id > 0) {
             InSkill_Recall_Auth::regenerate_token($user_id);
         }
-
         $this->redirect('inskill-recall-users', ['message' => 'token_regenerated']);
     }
 
@@ -127,11 +115,9 @@ class InSkill_Recall_Admin_Actions {
 
         if ($group_id > 0) {
             $updated = $this->repository->update_group($group_id, $data);
-
             if ($updated === false) {
                 $this->redirect('inskill-recall-groups', ['message' => 'group_update_error']);
             }
-
             $this->repository->replace_group_members($group_id, $member_ids);
             $this->redirect('inskill-recall-groups', ['message' => 'group_updated']);
         }
@@ -157,17 +143,37 @@ class InSkill_Recall_Admin_Actions {
 
     private function save_question() {
         $question_id = isset($_POST['question_id']) ? (int) $_POST['question_id'] : 0;
+        $creation_mode = isset($_POST['question_creation_mode']) ? sanitize_key(wp_unslash($_POST['question_creation_mode'])) : 'new';
 
         $data = [
             'group_id' => isset($_POST['group_id']) ? (int) $_POST['group_id'] : 0,
-            'internal_label' => isset($_POST['internal_label']) ? wp_unslash($_POST['internal_label']) : '',
+            'internal_label' => '',
+            'question_type' => isset($_POST['question_type']) ? wp_unslash($_POST['question_type']) : 'qcu',
             'question_text' => isset($_POST['question_text']) ? wp_unslash($_POST['question_text']) : '',
             'explanation' => isset($_POST['explanation']) ? wp_unslash($_POST['explanation']) : '',
             'image_id' => isset($_POST['image_id']) ? (int) $_POST['image_id'] : null,
             'image_url' => isset($_POST['image_url']) ? wp_unslash($_POST['image_url']) : '',
-            'sort_order' => isset($_POST['sort_order']) ? (int) $_POST['sort_order'] : 0,
             'status' => isset($_POST['status']) ? wp_unslash($_POST['status']) : 'active',
         ];
+
+        if ($question_id > 0) {
+            $existing = $this->repository->get_question($question_id);
+            if ($existing) {
+                $data['internal_label'] = (string) $existing->internal_label;
+                $data['group_id'] = (int) $existing->group_id;
+                $data['question_type'] = (string) $existing->question_type;
+
+                if (!$this->repository->question_has_activity($question_id)) {
+                    $data['group_id'] = isset($_POST['group_id']) ? (int) $_POST['group_id'] : $data['group_id'];
+                    $data['question_type'] = isset($_POST['question_type']) ? wp_unslash($_POST['question_type']) : $data['question_type'];
+                    $data['internal_label'] = isset($_POST['internal_label']) ? wp_unslash($_POST['internal_label']) : $data['internal_label'];
+                }
+            }
+        } else {
+            if ($creation_mode === 'insert') {
+                $data['internal_label'] = isset($_POST['internal_label']) ? wp_unslash($_POST['internal_label']) : '';
+            }
+        }
 
         $choice_texts = isset($_POST['choice_text']) ? (array) $_POST['choice_text'] : [];
         $choice_correct = isset($_POST['choice_is_correct']) ? (array) $_POST['choice_is_correct'] : [];
@@ -180,18 +186,37 @@ class InSkill_Recall_Admin_Actions {
             ];
         }
 
+        $is_locked = $question_id > 0 ? $this->repository->question_has_activity($question_id) : false;
+        $validation = $this->repository->validate_question_payload($data, $choices, $is_locked);
+        if (is_wp_error($validation)) {
+            $this->redirect('inskill-recall-questions', [
+                'message' => 'question_validation_error',
+                'error_detail' => rawurlencode($validation->get_error_message()),
+                'edit_question' => $question_id > 0 ? $question_id : 0,
+            ]);
+        }
+
         if ($question_id > 0) {
             $updated = $this->repository->update_question($question_id, $data, $choices);
-
-            if ($updated === false) {
-                $this->redirect('inskill-recall-questions', ['message' => 'question_locked']);
+            if (is_wp_error($updated)) {
+                $this->redirect('inskill-recall-questions', [
+                    'message' => 'question_validation_error',
+                    'error_detail' => rawurlencode($updated->get_error_message()),
+                    'edit_question' => $question_id,
+                ]);
             }
-
             $this->redirect('inskill-recall-questions', ['message' => 'question_updated']);
         }
 
         $new_question_id = $this->repository->create_question($data, $choices);
-        $this->redirect('inskill-recall-questions', ['message' => $new_question_id ? 'question_created' : 'question_create_error']);
+        if (is_wp_error($new_question_id)) {
+            $this->redirect('inskill-recall-questions', [
+                'message' => 'question_validation_error',
+                'error_detail' => rawurlencode($new_question_id->get_error_message()),
+            ]);
+        }
+
+        $this->redirect('inskill-recall-questions', ['message' => 'question_created']);
     }
 
     private function delete_question() {
@@ -199,12 +224,21 @@ class InSkill_Recall_Admin_Actions {
 
         if ($question_id > 0) {
             $deleted = $this->repository->delete_question($question_id);
-
             if ($deleted === false) {
                 $this->redirect('inskill-recall-questions', ['message' => 'question_locked']);
             }
-
             $this->redirect('inskill-recall-questions', ['message' => 'question_deleted']);
+        }
+
+        $this->redirect('inskill-recall-questions', ['message' => 'question_create_error']);
+    }
+
+    private function deactivate_question() {
+        $question_id = isset($_POST['question_id']) ? (int) $_POST['question_id'] : 0;
+
+        if ($question_id > 0) {
+            $updated = $this->repository->deactivate_question($question_id);
+            $this->redirect('inskill-recall-questions', ['message' => $updated ? 'question_deactivated' : 'question_create_error']);
         }
 
         $this->redirect('inskill-recall-questions', ['message' => 'question_create_error']);

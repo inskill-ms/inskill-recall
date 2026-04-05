@@ -21,10 +21,10 @@ window.InSkillRecallPreferences = (function ($, Utils, Api) {
     const prefs = state && state.preferences ? state.preferences : {
       hour: 9,
       minute: 0,
-      timezone: 'Europe/Paris',
-      timezone_label: 'France — Paris',
+      timezone: 'Africa/Casablanca',
+      timezone_label: 'Maroc - Casablanca',
       timezone_options: [
-        { value: 'Europe/Paris', label: 'France — Paris' }
+        { value: 'Africa/Casablanca', label: 'Maroc - Casablanca' }
       ],
       allow_weekend: 0,
       time_label: '09:00'
@@ -34,7 +34,7 @@ window.InSkillRecallPreferences = (function ($, Utils, Api) {
     const minuteOptions = [];
     const timezoneOptions = Array.isArray(prefs.timezone_options) && prefs.timezone_options.length
       ? prefs.timezone_options
-      : [{ value: 'Europe/Paris', label: 'France — Paris' }];
+      : [{ value: 'Africa/Casablanca', label: 'Maroc - Casablanca' }];
 
     for (let h = 0; h <= 23; h++) {
       const value = String(h).padStart(2, '0');
@@ -186,3 +186,5 @@ window.InSkillRecallPreferences = (function ($, Utils, Api) {
     bindForm: bindForm
   };
 })(jQuery, window.InSkillRecallUtils, window.InSkillRecallApi);
+
+

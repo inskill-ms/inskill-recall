@@ -68,7 +68,7 @@ class InSkill_Recall_V2_Engine {
                 $group_id,
                 $recall_user_id,
                 (int) $question->id,
-                (int) $question->sort_order,
+                (int) $question->id,
                 $today,
                 (int) $assignment['chain_number'],
                 $assignment['parent_progress_id'] !== null ? (int) $assignment['parent_progress_id'] : null
@@ -337,3 +337,5 @@ class InSkill_Recall_V2_Engine {
         }
     }
 }
+
+
