@@ -21,13 +21,19 @@ class InSkill_Recall_Admin_Page_Questions {
             'question_updated' => 'Question mise à jour.',
             'question_deleted' => 'Question supprimée.',
             'question_create_error' => 'Erreur lors de la création de la question.',
+            'question_locked' => 'Cette question a déjà une activité utilisateur. Son édition et sa suppression sont bloquées.',
         ];
 
         if (!isset($map[$message])) {
             return;
         }
 
-        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($map[$message]) . '</p></div>';
+        $class = ($message === 'question_create_error') ? 'notice notice-error is-dismissible' : 'notice notice-success is-dismissible';
+        if ($message === 'question_locked') {
+            $class = 'notice notice-warning is-dismissible';
+        }
+
+        echo '<div class="' . esc_attr($class) . '"><p>' . esc_html($map[$message]) . '</p></div>';
     }
 
     public function render() {
@@ -35,10 +41,13 @@ class InSkill_Recall_Admin_Page_Questions {
 
         $edit_question = null;
         $edit_choices = [];
+        $is_locked = false;
+
         if (!empty($_GET['edit_question'])) {
             $edit_question = $this->repository->get_question((int) $_GET['edit_question']);
             if ($edit_question) {
                 $edit_choices = $this->repository->get_question_choices((int) $edit_question->id);
+                $is_locked = $this->repository->question_has_activity((int) $edit_question->id);
             }
         }
 
@@ -52,6 +61,12 @@ class InSkill_Recall_Admin_Page_Questions {
                 <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;">
                     <h2 style="margin-top:0;"><?php echo $edit_question ? 'Modifier la question' : 'Nouvelle question'; ?></h2>
 
+                    <?php if ($is_locked) : ?>
+                        <div class="notice notice-warning inline">
+                            <p>Cette question a déjà une activité réelle côté utilisateur. Son édition est bloquée pour préserver la cohérence pédagogique et l’historique.</p>
+                        </div>
+                    <?php endif; ?>
+
                     <form method="post">
                         <?php wp_nonce_field('inskill_recall_admin_action'); ?>
                         <input type="hidden" name="inskill_recall_action" value="save_question">
@@ -61,7 +76,7 @@ class InSkill_Recall_Admin_Page_Questions {
                             <tr>
                                 <th><label for="group_id">Groupe</label></th>
                                 <td>
-                                    <select name="group_id" id="group_id">
+                                    <select name="group_id" id="group_id" <?php disabled($is_locked); ?>>
                                         <?php foreach ($groups as $group) : ?>
                                             <option value="<?php echo esc_attr($group->id); ?>" <?php selected($edit_question->group_id ?? 0, $group->id); ?>>
                                                 <?php echo esc_html($group->name); ?>
@@ -72,24 +87,24 @@ class InSkill_Recall_Admin_Page_Questions {
                             </tr>
                             <tr>
                                 <th><label for="internal_label">Libellé interne</label></th>
-                                <td><input type="text" class="regular-text" name="internal_label" id="internal_label" value="<?php echo esc_attr($edit_question->internal_label ?? ''); ?>"></td>
+                                <td><input type="text" class="regular-text" name="internal_label" id="internal_label" value="<?php echo esc_attr($edit_question->internal_label ?? ''); ?>" <?php disabled($is_locked); ?>></td>
                             </tr>
                             <tr>
                                 <th><label for="question_text">Question</label></th>
-                                <td><textarea class="large-text" rows="4" name="question_text" id="question_text"><?php echo esc_textarea($edit_question->question_text ?? ''); ?></textarea></td>
+                                <td><textarea class="large-text" rows="4" name="question_text" id="question_text" <?php disabled($is_locked); ?>><?php echo esc_textarea($edit_question->question_text ?? ''); ?></textarea></td>
                             </tr>
                             <tr>
                                 <th><label for="explanation">Explication</label></th>
-                                <td><textarea class="large-text" rows="4" name="explanation" id="explanation"><?php echo esc_textarea($edit_question->explanation ?? ''); ?></textarea></td>
+                                <td><textarea class="large-text" rows="4" name="explanation" id="explanation" <?php disabled($is_locked); ?>><?php echo esc_textarea($edit_question->explanation ?? ''); ?></textarea></td>
                             </tr>
                             <tr>
                                 <th><label for="sort_order">Ordre</label></th>
-                                <td><input type="number" name="sort_order" id="sort_order" value="<?php echo esc_attr(isset($edit_question->sort_order) ? (int) $edit_question->sort_order : 0); ?>"></td>
+                                <td><input type="number" name="sort_order" id="sort_order" value="<?php echo esc_attr(isset($edit_question->sort_order) ? (int) $edit_question->sort_order : 0); ?>" <?php disabled($is_locked); ?>></td>
                             </tr>
                             <tr>
                                 <th><label for="status">Statut</label></th>
                                 <td>
-                                    <select name="status" id="status">
+                                    <select name="status" id="status" <?php disabled($is_locked); ?>>
                                         <option value="active" <?php selected($edit_question->status ?? 'active', 'active'); ?>>Actif</option>
                                         <option value="inactive" <?php selected($edit_question->status ?? '', 'inactive'); ?>>Inactif</option>
                                     </select>
@@ -120,11 +135,11 @@ class InSkill_Recall_Admin_Page_Questions {
                                     ?>
                                     <tr>
                                         <td>
-                                            <input type="text" class="regular-text" name="choice_text[<?php echo esc_attr($i); ?>]" value="<?php echo esc_attr($choice_text); ?>">
+                                            <input type="text" class="regular-text" name="choice_text[<?php echo esc_attr($i); ?>]" value="<?php echo esc_attr($choice_text); ?>" <?php disabled($is_locked); ?>>
                                         </td>
                                         <td>
                                             <label>
-                                                <input type="checkbox" name="choice_is_correct[<?php echo esc_attr($i); ?>]" value="1" <?php checked($is_correct); ?>>
+                                                <input type="checkbox" name="choice_is_correct[<?php echo esc_attr($i); ?>]" value="1" <?php checked($is_correct); ?> <?php disabled($is_locked); ?>>
                                                 Correct
                                             </label>
                                         </td>
@@ -134,7 +149,10 @@ class InSkill_Recall_Admin_Page_Questions {
                         </table>
 
                         <p style="margin-top:16px;">
-                            <button type="submit" class="button button-primary"><?php echo $edit_question ? 'Mettre à jour' : 'Créer'; ?></button>
+                            <?php if (!$is_locked) : ?>
+                                <button type="submit" class="button button-primary"><?php echo $edit_question ? 'Mettre à jour' : 'Créer'; ?></button>
+                            <?php endif; ?>
+
                             <?php if ($edit_question) : ?>
                                 <a href="<?php echo esc_url(admin_url('admin.php?page=inskill-recall-questions')); ?>" class="button">Annuler</a>
                             <?php endif; ?>
@@ -155,14 +173,16 @@ class InSkill_Recall_Admin_Page_Questions {
                                 <th>Ordre</th>
                                 <th>Choix</th>
                                 <th>Statut</th>
+                                <th>Verrou</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($questions)) : ?>
-                                <tr><td colspan="8">Aucune question.</td></tr>
+                                <tr><td colspan="9">Aucune question.</td></tr>
                             <?php else : ?>
                                 <?php foreach ($questions as $question) : ?>
+                                    <?php $row_locked = $this->repository->question_has_activity((int) $question->id); ?>
                                     <tr>
                                         <td><?php echo esc_html($question->id); ?></td>
                                         <td><?php echo esc_html($question->group_name); ?></td>
@@ -171,14 +191,20 @@ class InSkill_Recall_Admin_Page_Questions {
                                         <td><?php echo esc_html((int) $question->sort_order); ?></td>
                                         <td><?php echo esc_html((int) $question->choices_count); ?></td>
                                         <td><?php echo esc_html($question->status); ?></td>
+                                        <td><?php echo $row_locked ? 'Oui' : 'Non'; ?></td>
                                         <td>
                                             <a class="button button-small" href="<?php echo esc_url(add_query_arg(['page' => 'inskill-recall-questions', 'edit_question' => $question->id], admin_url('admin.php'))); ?>">Éditer</a>
-                                            <form method="post" style="display:inline;" onsubmit="return confirm('Supprimer cette question ?');">
-                                                <?php wp_nonce_field('inskill_recall_admin_action'); ?>
-                                                <input type="hidden" name="inskill_recall_action" value="delete_question">
-                                                <input type="hidden" name="question_id" value="<?php echo esc_attr($question->id); ?>">
-                                                <button type="submit" class="button button-small">Supprimer</button>
-                                            </form>
+
+                                            <?php if (!$row_locked) : ?>
+                                                <form method="post" style="display:inline;" onsubmit="return confirm('Supprimer cette question ?');">
+                                                    <?php wp_nonce_field('inskill_recall_admin_action'); ?>
+                                                    <input type="hidden" name="inskill_recall_action" value="delete_question">
+                                                    <input type="hidden" name="question_id" value="<?php echo esc_attr($question->id); ?>">
+                                                    <button type="submit" class="button button-small">Supprimer</button>
+                                                </form>
+                                            <?php else : ?>
+                                                <span style="color:#646970;">Suppression bloquée</span>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

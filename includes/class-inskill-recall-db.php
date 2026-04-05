@@ -4,19 +4,13 @@ if (!defined('ABSPATH')) {
 }
 
 class InSkill_Recall_DB {
-    const DB_VERSION = '0.6.0';
+    const DB_VERSION = '0.6.2';
 
-    /**
-     * Retourne le nom complet d'une table du plugin.
-     */
     public static function table($name) {
         global $wpdb;
         return $wpdb->prefix . 'inskill_recall_' . $name;
     }
 
-    /**
-     * Liste centralisée des tables v2.
-     */
     public static function get_tables() {
         return [
             'users',
@@ -32,18 +26,12 @@ class InSkill_Recall_DB {
         ];
     }
 
-    /**
-     * Activation initiale.
-     */
     public static function activate() {
         self::create_tables();
         self::seed_defaults();
         update_option('inskill_recall_db_version', self::DB_VERSION);
     }
 
-    /**
-     * Upgrade de schéma.
-     */
     public static function maybe_upgrade() {
         $installed = (string) get_option('inskill_recall_db_version', '');
 
@@ -54,9 +42,6 @@ class InSkill_Recall_DB {
         }
     }
 
-    /**
-     * Création / mise à jour des tables v2.
-     */
     public static function create_tables() {
         global $wpdb;
 
@@ -90,6 +75,7 @@ class InSkill_Recall_DB {
             notification_timezone VARCHAR(100) NOT NULL DEFAULT 'Europe/Paris',
             notifications_weekend TINYINT(1) NOT NULL DEFAULT 0,
             last_access_at DATETIME NULL,
+            last_notified_at DATETIME NULL,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             PRIMARY KEY  (id),
@@ -183,6 +169,9 @@ class InSkill_Recall_DB {
             question_order_index INT NOT NULL DEFAULT 0,
             is_initially_assigned TINYINT(1) NOT NULL DEFAULT 0,
 
+            injection_chain_number TINYINT UNSIGNED NULL,
+            parent_progress_id BIGINT UNSIGNED NULL,
+
             current_level VARCHAR(20) NOT NULL DEFAULT 'nv0',
             current_state VARCHAR(20) NOT NULL DEFAULT 'active',
 
@@ -224,7 +213,9 @@ class InSkill_Recall_DB {
             UNIQUE KEY uniq_user_question (group_id, recall_user_id, question_id),
             KEY idx_user_group_due (recall_user_id, group_id, next_due_at),
             KEY idx_user_group_state (recall_user_id, group_id, current_state),
-            KEY idx_group_level (group_id, current_level)
+            KEY idx_group_level (group_id, current_level),
+            KEY idx_chain_lookup (group_id, recall_user_id, injection_chain_number, created_at, id),
+            KEY idx_parent_progress (parent_progress_id)
         ) {$charset_collate};";
 
         $sql[] = "CREATE TABLE {$question_occurrences_table} (
@@ -317,10 +308,6 @@ class InSkill_Recall_DB {
         self::drop_legacy_tables();
     }
 
-    /**
-     * Supprime les anciennes tables devenues obsolètes.
-     * Ici on assume une refonte franche : pas besoin de conserver l'ancien moteur.
-     */
     public static function drop_legacy_tables() {
         global $wpdb;
 
@@ -337,9 +324,6 @@ class InSkill_Recall_DB {
         }
     }
 
-    /**
-     * Supprime toutes les tables v2 + anciennes tables legacy éventuelles.
-     */
     public static function drop_tables() {
         global $wpdb;
 
@@ -360,9 +344,6 @@ class InSkill_Recall_DB {
         }
     }
 
-    /**
-     * Options par défaut du plugin.
-     */
     public static function seed_defaults() {
         $defaults = [
             'dashboard_page_id' => 0,
@@ -381,10 +362,6 @@ class InSkill_Recall_DB {
         }
     }
 
-    /**
-     * Version minimale autonome pour ne pas dépendre immédiatement
-     * de class-inskill-recall-auth.php dans cette phase de fondation.
-     */
     private static function get_default_allowed_timezones_raw() {
         return implode("\n", [
             'France — Paris|Europe/Paris',

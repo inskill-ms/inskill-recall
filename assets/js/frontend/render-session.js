@@ -13,6 +13,20 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
     return null;
   }
 
+  function reloadState(callback) {
+    Api.getDashboard()
+      .done(function (resp) {
+        if (!resp || !resp.success || !resp.data) {
+          callback(null);
+          return;
+        }
+        callback(resp.data);
+      })
+      .fail(function () {
+        callback(null);
+      });
+  }
+
   function renderStatusBadge(status, label) {
     const normalized = status || 'active';
     return '<span class="inskill-status-badge status-' + Utils.esc(normalized) + '">' + Utils.esc(label || normalized) + '</span>';
@@ -370,12 +384,32 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
   function bindAfterAnswer(state, $app, groupId, onDone) {
     $('#inskill-next-after-answer').off('click').on('click', function (e) {
       e.preventDefault();
-      location.reload();
+      reloadState(function (freshState) {
+        if (!freshState) {
+          window.location.reload();
+          return;
+        }
+
+        renderQueue(freshState, $app, groupId, onDone);
+        if (typeof onDone === 'function') {
+          onDone();
+        }
+      });
     });
 
     $('#inskill-back-queue-after-answer').off('click').on('click', function (e) {
       e.preventDefault();
-      location.reload();
+      reloadState(function (freshState) {
+        if (!freshState) {
+          window.location.reload();
+          return;
+        }
+
+        renderQueue(freshState, $app, groupId, onDone);
+        if (typeof onDone === 'function') {
+          onDone();
+        }
+      });
     });
   }
 
@@ -413,7 +447,21 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
           return;
         }
 
-        location.reload();
+        const item = resp.data.question;
+        let html = '';
+        html += '<div class="inskill-recall-box">';
+        html += '<div class="inskill-recall-meta"><span>' + Utils.esc(item.display_level || '') + '</span><span>Q' + Utils.esc(item.question_id) + '</span></div>';
+        html += '<div class="inskill-question">' + item.question_text + '</div>';
+
+        if (item.image_url) {
+          html += '<div class="inskill-image"><img src="' + Utils.esc(item.image_url) + '" alt=""></div>';
+        }
+
+        html += renderFeedback(item);
+        html += '</div>';
+
+        $app.html(html);
+        bindAfterAnswer(state, $app, groupId, onDone);
       })
       .fail(function () {
         alert(InSkillRecall.labels.saveError || 'Erreur lors de l’enregistrement.');

@@ -9,7 +9,7 @@ self.addEventListener('activate', function (event) {
 self.addEventListener('push', function (event) {
   let data = {
     title: 'InSkill Recall',
-    body: 'Une nouvelle session est disponible.',
+    body: 'Vos questions sont disponibles.',
     url: '/',
     icon: '',
     badge: '',
@@ -60,7 +60,10 @@ self.addEventListener('notificationclick', function (event) {
         const client = clientList[i];
 
         if ('focus' in client) {
-          client.navigate(targetUrl);
+          try {
+            client.navigate(targetUrl);
+          } catch (e) {
+          }
           return client.focus();
         }
       }

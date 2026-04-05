@@ -2,7 +2,7 @@
 /**
  * Plugin Name: InSkill Recall
  * Description: Plugin d'ancrage mémoriel v2 avec accès sécurisé par lien personnel et notifications web push.
- * Version: 0.6.0
+ * Version: 0.6.2
  * Author: OpenAI
  * Text Domain: inskill-recall
  */
@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('INSKILL_RECALL_VERSION', '0.6.0');
+define('INSKILL_RECALL_VERSION', '0.6.2');
 define('INSKILL_RECALL_PLUGIN_FILE', __FILE__);
 define('INSKILL_RECALL_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INSKILL_RECALL_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -46,13 +46,7 @@ require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-frontend
 
 register_activation_hook(__FILE__, function () {
     InSkill_Recall_DB::activate();
-
-    /**
-     * Crée automatiquement la page frontend si elle n'existe pas encore.
-     * La méthode est idempotente : si la page existe déjà, elle est simplement réutilisée.
-     */
     InSkill_Recall_Frontend::ensure_dashboard_page_exists();
-
     InSkill_Recall_V2_Cron::activate();
     flush_rewrite_rules();
 });
@@ -84,11 +78,6 @@ final class InSkill_Recall {
     public function init() {
         InSkill_Recall_DB::maybe_upgrade();
 
-        /**
-         * Sécurité complémentaire :
-         * si l’option a été perdue ou si la page a été supprimée manuellement,
-         * on la recrée à la volée côté admin.
-         */
         if (is_admin() && !InSkill_Recall_Frontend::get_dashboard_page()) {
             InSkill_Recall_Frontend::ensure_dashboard_page_exists();
         }

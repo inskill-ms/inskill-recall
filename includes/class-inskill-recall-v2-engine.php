@@ -59,14 +59,19 @@ class InSkill_Recall_V2_Engine {
             InSkill_Recall_V2_Occurrence_Service::ensure_occurrence_exists($progress, $today, $occurrence_type);
         }
 
-        $newQuestions = self::compute_new_questions_to_assign($group_id, $recall_user_id, $today, $group->question_order_mode);
-        foreach ($newQuestions as $question) {
+        $newAssignments = self::compute_new_question_assignments($group_id, $recall_user_id, $today, $group->question_order_mode);
+
+        foreach ($newAssignments as $assignment) {
+            $question = $assignment['question'];
+
             $progress = InSkill_Recall_V2_Progress_Service::create_initial_progress(
                 $group_id,
                 $recall_user_id,
                 (int) $question->id,
                 (int) $question->sort_order,
-                $today
+                $today,
+                (int) $assignment['chain_number'],
+                $assignment['parent_progress_id'] !== null ? (int) $assignment['parent_progress_id'] : null
             );
 
             InSkill_Recall_V2_Occurrence_Service::ensure_occurrence_exists($progress, $today, 'new');
@@ -75,51 +80,101 @@ class InSkill_Recall_V2_Engine {
         InSkill_Recall_V2_Scoring_Service::recalculate_user_group_stats($group_id, $recall_user_id);
     }
 
-    public static function compute_new_questions_to_assign($group_id, $recall_user_id, $today = null, $question_order_mode = 'ordered') {
+    /**
+     * Implémente la section 9 du CDC v2 :
+     * - J1 : exactement 2 nouvelles questions si disponibles
+     * - ces 2 questions créent 2 chaînes indépendantes
+     * - chaque question débloque uniquement sa suivante dans sa propre chaîne
+     * - déblocage 3 jours après sa première réponse
+     * - une non-réponse ne débloque rien
+     * - donc jamais plus de 2 nouvelles questions sur une même journée
+     */
+    public static function compute_new_question_assignments($group_id, $recall_user_id, $today = null, $question_order_mode = 'ordered') {
         if (!$today) {
             $today = InSkill_Recall_V2_Progress_Service::today_date();
         }
 
-        $progressRows = InSkill_Recall_V2_Progress_Service::get_group_progress_rows($group_id, $recall_user_id, true);
-        $assignedCount = count($progressRows);
+        $assignedCount = InSkill_Recall_V2_Progress_Service::count_progress_rows($group_id, $recall_user_id);
 
+        // J1 : exactement 2 nouvelles questions si possible
         if ($assignedCount === 0) {
-            return InSkill_Recall_V2_Progress_Service::get_next_never_seen_questions(
+            $questions = InSkill_Recall_V2_Progress_Service::get_next_never_seen_questions(
                 $group_id,
                 $recall_user_id,
                 2,
                 $question_order_mode
             );
-        }
 
-        $eligibleCount = 0;
-        foreach ($progressRows as $row) {
-            if (!empty($row->first_answered_at)) {
-                try {
-                    $firstAnswered = new DateTimeImmutable($row->first_answered_at, wp_timezone());
-                    $unlockDate = $firstAnswered->modify('+3 days')->format('Y-m-d');
-                    if ($unlockDate <= $today) {
-                        $eligibleCount++;
-                    }
-                } catch (Exception $e) {
-                }
+            $assignments = [];
+            foreach ($questions as $index => $question) {
+                $assignments[] = [
+                    'question' => $question,
+                    'chain_number' => $index + 1, // 1 puis 2
+                    'parent_progress_id' => null,
+                ];
             }
+
+            return $assignments;
         }
 
-        $alreadyAssigned = $assignedCount;
-        $maxAllowedByUnlock = 2 + $eligibleCount;
-        $availableSlots = max(0, $maxAllowedByUnlock - $alreadyAssigned);
+        $eligibleChainAssignments = [];
 
-        if ($availableSlots <= 0) {
+        foreach ([1, 2] as $chainNumber) {
+            $tip = InSkill_Recall_V2_Progress_Service::get_chain_tip($group_id, $recall_user_id, $chainNumber);
+            if (!$tip) {
+                continue;
+            }
+
+            // Une non-réponse ne débloque rien : il faut une première réponse
+            if (empty($tip->first_answered_at)) {
+                continue;
+            }
+
+            // Une question débloque une seule suivante
+            if (InSkill_Recall_V2_Progress_Service::chain_has_child((int) $tip->id)) {
+                continue;
+            }
+
+            $unlockDate = InSkill_Recall_V2_Progress_Service::get_unlock_date_from_first_answer($tip->first_answered_at);
+            if (!$unlockDate || $unlockDate > $today) {
+                continue;
+            }
+
+            $eligibleChainAssignments[] = [
+                'chain_number' => $chainNumber,
+                'parent_progress_id' => (int) $tip->id,
+            ];
+        }
+
+        if (empty($eligibleChainAssignments)) {
             return [];
         }
 
-        return InSkill_Recall_V2_Progress_Service::get_next_never_seen_questions(
+        $questions = InSkill_Recall_V2_Progress_Service::get_next_never_seen_questions(
             $group_id,
             $recall_user_id,
-            $availableSlots,
+            count($eligibleChainAssignments),
             $question_order_mode
         );
+
+        if (empty($questions)) {
+            return [];
+        }
+
+        $assignments = [];
+        foreach ($eligibleChainAssignments as $index => $chainAssignment) {
+            if (!isset($questions[$index])) {
+                break;
+            }
+
+            $assignments[] = [
+                'question' => $questions[$index],
+                'chain_number' => (int) $chainAssignment['chain_number'],
+                'parent_progress_id' => (int) $chainAssignment['parent_progress_id'],
+            ];
+        }
+
+        return $assignments;
     }
 
     public static function evaluate_answer($question_id, array $selected_choice_ids) {

@@ -81,8 +81,8 @@ class InSkill_Recall_Admin_Actions {
         ];
 
         if ($user_id > 0) {
-            $this->repository->update_user($user_id, $data);
-            $this->redirect('inskill-recall-users', ['message' => 'user_updated']);
+            $updated = $this->repository->update_user($user_id, $data);
+            $this->redirect('inskill-recall-users', ['message' => $updated ? 'user_updated' : 'user_update_error']);
         }
 
         $new_user_id = $this->repository->create_user($data);
@@ -93,10 +93,11 @@ class InSkill_Recall_Admin_Actions {
         $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
 
         if ($user_id > 0) {
-            $this->repository->delete_user($user_id);
+            $deleted = $this->repository->delete_user($user_id);
+            $this->redirect('inskill-recall-users', ['message' => $deleted ? 'user_deleted' : 'user_delete_error']);
         }
 
-        $this->redirect('inskill-recall-users', ['message' => 'user_deleted']);
+        $this->redirect('inskill-recall-users', ['message' => 'user_delete_error']);
     }
 
     private function regenerate_user_token() {
@@ -125,7 +126,12 @@ class InSkill_Recall_Admin_Actions {
         $member_ids = array_values(array_unique(array_map('intval', $member_ids)));
 
         if ($group_id > 0) {
-            $this->repository->update_group($group_id, $data);
+            $updated = $this->repository->update_group($group_id, $data);
+
+            if ($updated === false) {
+                $this->redirect('inskill-recall-groups', ['message' => 'group_update_error']);
+            }
+
             $this->repository->replace_group_members($group_id, $member_ids);
             $this->redirect('inskill-recall-groups', ['message' => 'group_updated']);
         }
@@ -142,10 +148,11 @@ class InSkill_Recall_Admin_Actions {
         $group_id = isset($_POST['group_id']) ? (int) $_POST['group_id'] : 0;
 
         if ($group_id > 0) {
-            $this->repository->delete_group($group_id);
+            $deleted = $this->repository->delete_group($group_id);
+            $this->redirect('inskill-recall-groups', ['message' => $deleted ? 'group_deleted' : 'group_delete_error']);
         }
 
-        $this->redirect('inskill-recall-groups', ['message' => 'group_deleted']);
+        $this->redirect('inskill-recall-groups', ['message' => 'group_delete_error']);
     }
 
     private function save_question() {
@@ -174,7 +181,12 @@ class InSkill_Recall_Admin_Actions {
         }
 
         if ($question_id > 0) {
-            $this->repository->update_question($question_id, $data, $choices);
+            $updated = $this->repository->update_question($question_id, $data, $choices);
+
+            if ($updated === false) {
+                $this->redirect('inskill-recall-questions', ['message' => 'question_locked']);
+            }
+
             $this->redirect('inskill-recall-questions', ['message' => 'question_updated']);
         }
 
@@ -186,10 +198,16 @@ class InSkill_Recall_Admin_Actions {
         $question_id = isset($_POST['question_id']) ? (int) $_POST['question_id'] : 0;
 
         if ($question_id > 0) {
-            $this->repository->delete_question($question_id);
+            $deleted = $this->repository->delete_question($question_id);
+
+            if ($deleted === false) {
+                $this->redirect('inskill-recall-questions', ['message' => 'question_locked']);
+            }
+
+            $this->redirect('inskill-recall-questions', ['message' => 'question_deleted']);
         }
 
-        $this->redirect('inskill-recall-questions', ['message' => 'question_deleted']);
+        $this->redirect('inskill-recall-questions', ['message' => 'question_create_error']);
     }
 
     private function save_notification_settings() {

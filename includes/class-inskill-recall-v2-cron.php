@@ -75,6 +75,61 @@ class InSkill_Recall_V2_Cron {
         update_option(self::MIDDAY_OPTION, $today, false);
     }
 
+    protected static function get_user_target_url($user) {
+        if (!$user) {
+            return home_url('/');
+        }
+
+        $dashboardUrl = InSkill_Recall_Frontend::get_user_dashboard_url($user);
+        if ($dashboardUrl !== '') {
+            return $dashboardUrl;
+        }
+
+        return home_url('/');
+    }
+
+    protected static function should_send_daily_notification_now($user) {
+        if (!$user) {
+            return false;
+        }
+
+        $prefs = InSkill_Recall_Auth::get_notification_preferences($user);
+        $timezone = !empty($prefs['timezone']) ? (string) $prefs['timezone'] : InSkill_Recall_Auth::DEFAULT_NOTIFICATION_TIMEZONE;
+
+        try {
+            $tz = new DateTimeZone($timezone);
+            $now = new DateTimeImmutable('now', $tz);
+        } catch (Exception $e) {
+            return false;
+        }
+
+        $dayOfWeek = (int) $now->format('N');
+        if (empty($prefs['allow_weekend']) && $dayOfWeek >= 6) {
+            return false;
+        }
+
+        $nowMinutes = ((int) $now->format('H')) * 60 + ((int) $now->format('i'));
+        $targetMinutes = ((int) $prefs['hour']) * 60 + ((int) $prefs['minute']);
+
+        if ($nowMinutes < $targetMinutes || $nowMinutes > ($targetMinutes + 59)) {
+            return false;
+        }
+
+        if (!empty($user->last_notified_at)) {
+            $lastTs = InSkill_Recall_Auth::local_mysql_to_timestamp((string) $user->last_notified_at, $tz);
+            if ($lastTs !== false) {
+                $lastLocalDate = wp_date('Y-m-d', $lastTs, $tz);
+                $currentLocalDate = $now->format('Y-m-d');
+
+                if ($lastLocalDate === $currentLocalDate) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     protected static function send_daily_notifications() {
         if (!class_exists('InSkill_Recall_Push') || !class_exists('InSkill_Recall_Auth')) {
             return;
@@ -110,32 +165,42 @@ class InSkill_Recall_V2_Cron {
                     continue;
                 }
 
-                if (!InSkill_Recall_Auth::can_send_notification_now($user, current_time('timestamp'))) {
+                if (!self::should_send_daily_notification_now($user)) {
                     continue;
                 }
 
                 $payload = [
                     'title' => 'InSkill Recall',
                     'body'  => 'Vos questions du jour sont disponibles.',
-                    'url'   => home_url('/'),
+                    'url'   => self::get_user_target_url($user),
                     'tag'   => 'inskill-recall-daily-' . (int) $group->id . '-' . (int) $member->id,
                 ];
 
                 $sent = InSkill_Recall_Push::send_to_user((int) $member->id, $payload);
 
-                self::log_notification((int) $member->id, (int) $group->id, 'daily_routine', $payload, $sent ? 'sent' : 'error', $sent ? null : 'push_send_failed');
+                self::log_notification(
+                    (int) $member->id,
+                    (int) $group->id,
+                    'daily_routine',
+                    $payload,
+                    $sent ? 'sent' : 'error',
+                    $sent ? null : 'push_send_failed'
+                );
             }
         }
     }
 
     protected static function send_downgrade_alert_notifications() {
-        if (!class_exists('InSkill_Recall_Push')) {
+        if (!class_exists('InSkill_Recall_Push') || !class_exists('InSkill_Recall_Auth')) {
             return;
         }
 
         global $wpdb;
 
-        $tomorrow = InSkill_Recall_V2_Progress_Service::add_days(InSkill_Recall_V2_Progress_Service::today_date(), 1);
+        $tomorrow = InSkill_Recall_V2_Progress_Service::add_days(
+            InSkill_Recall_V2_Progress_Service::today_date(),
+            1
+        );
 
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT DISTINCT group_id, recall_user_id
@@ -146,16 +211,28 @@ class InSkill_Recall_V2_Cron {
         ));
 
         foreach ($rows as $row) {
+            $user = InSkill_Recall_Auth::get_user((int) $row->recall_user_id);
+            if (!$user) {
+                continue;
+            }
+
             $payload = [
                 'title' => 'InSkill Recall',
                 'body'  => 'Certaines questions risquent de rétrograder demain. Pensez à les revoir.',
-                'url'   => home_url('/'),
+                'url'   => self::get_user_target_url($user),
                 'tag'   => 'inskill-recall-downgrade-' . (int) $row->group_id . '-' . (int) $row->recall_user_id,
             ];
 
             $sent = InSkill_Recall_Push::send_to_user((int) $row->recall_user_id, $payload);
 
-            self::log_notification((int) $row->recall_user_id, (int) $row->group_id, 'downgrade_alert', $payload, $sent ? 'sent' : 'error', $sent ? null : 'push_send_failed');
+            self::log_notification(
+                (int) $row->recall_user_id,
+                (int) $row->group_id,
+                'downgrade_alert',
+                $payload,
+                $sent ? 'sent' : 'error',
+                $sent ? null : 'push_send_failed'
+            );
         }
     }
 
@@ -165,16 +242,16 @@ class InSkill_Recall_V2_Cron {
         $wpdb->insert(
             InSkill_Recall_DB::table('notification_logs'),
             [
-                'recall_user_id'   => (int) $recall_user_id,
-                'group_id'         => $group_id ? (int) $group_id : null,
-                'notification_type'=> (string) $type,
-                'title'            => isset($payload['title']) ? (string) $payload['title'] : 'InSkill Recall',
-                'body'             => isset($payload['body']) ? (string) $payload['body'] : '',
-                'payload_json'     => wp_json_encode($payload),
-                'sent_at'          => current_time('mysql'),
-                'status'           => (string) $status,
-                'error_message'    => $error_message,
-                'created_at'       => current_time('mysql'),
+                'recall_user_id'    => (int) $recall_user_id,
+                'group_id'          => $group_id ? (int) $group_id : null,
+                'notification_type' => (string) $type,
+                'title'             => isset($payload['title']) ? (string) $payload['title'] : 'InSkill Recall',
+                'body'              => isset($payload['body']) ? (string) $payload['body'] : '',
+                'payload_json'      => wp_json_encode($payload),
+                'sent_at'           => current_time('mysql'),
+                'status'            => (string) $status,
+                'error_message'     => $error_message,
+                'created_at'        => current_time('mysql'),
             ]
         );
     }

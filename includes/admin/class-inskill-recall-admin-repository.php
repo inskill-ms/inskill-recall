@@ -247,6 +247,31 @@ class InSkill_Recall_Admin_Repository {
         ));
     }
 
+    public function question_has_activity($question_id) {
+        global $wpdb;
+
+        $question_id = (int) $question_id;
+        if ($question_id <= 0) {
+            return false;
+        }
+
+        $progress_count = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM " . $this->table('user_question_progress') . " WHERE question_id = %d",
+            $question_id
+        ));
+
+        if ($progress_count > 0) {
+            return true;
+        }
+
+        $occurrence_count = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM " . $this->table('question_occurrences') . " WHERE question_id = %d",
+            $question_id
+        ));
+
+        return $occurrence_count > 0;
+    }
+
     public function create_question($data, array $choices) {
         global $wpdb;
 
@@ -279,6 +304,10 @@ class InSkill_Recall_Admin_Repository {
     public function update_question($question_id, $data, array $choices) {
         global $wpdb;
 
+        if ($this->question_has_activity($question_id)) {
+            return false;
+        }
+
         $updated = $wpdb->update(
             $this->table('questions'),
             [
@@ -295,9 +324,13 @@ class InSkill_Recall_Admin_Repository {
             ['id' => (int) $question_id]
         );
 
+        if ($updated === false) {
+            return false;
+        }
+
         $this->replace_question_choices((int) $question_id, $choices);
 
-        return $updated !== false;
+        return true;
     }
 
     public function replace_question_choices($question_id, array $choices) {
@@ -330,6 +363,10 @@ class InSkill_Recall_Admin_Repository {
 
     public function delete_question($question_id) {
         global $wpdb;
+
+        if ($this->question_has_activity($question_id)) {
+            return false;
+        }
 
         return false !== $wpdb->delete($this->table('questions'), ['id' => (int) $question_id]);
     }

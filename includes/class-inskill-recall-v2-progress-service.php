@@ -150,12 +150,12 @@ class InSkill_Recall_V2_Progress_Service {
         }
 
         return [
-            'next_level'                    => $new_level,
-            'next_due_date'                 => $next_due_date,
-            'next_due_at'                   => self::due_datetime_for_date($next_due_date),
-            'next_state'                    => self::STATE_ACTIVE,
-            'new_consecutive_unanswered'    => $new_count,
-            'downgrade_rule'                => self::get_downgrade_rule($new_level, $next_due_date),
+            'next_level'                 => $new_level,
+            'next_due_date'              => $next_due_date,
+            'next_due_at'                => self::due_datetime_for_date($next_due_date),
+            'next_state'                 => self::STATE_ACTIVE,
+            'new_consecutive_unanswered' => $new_count,
+            'downgrade_rule'             => self::get_downgrade_rule($new_level, $next_due_date),
         ];
     }
 
@@ -244,7 +244,7 @@ class InSkill_Recall_V2_Progress_Service {
         if (!$include_mastered) {
             $sql .= " AND current_level != 'mastered'";
         }
-        $sql .= " ORDER BY question_order_index ASC, id ASC";
+        $sql .= " ORDER BY created_at ASC, question_order_index ASC, id ASC";
 
         return $wpdb->get_results($wpdb->prepare($sql, (int) $group_id, (int) $recall_user_id));
     }
@@ -300,7 +300,50 @@ class InSkill_Recall_V2_Progress_Service {
         ));
     }
 
-    public static function create_initial_progress($group_id, $recall_user_id, $question_id, $question_order_index, $today = null) {
+    public static function get_chain_tip($group_id, $recall_user_id, $chain_number) {
+        global $wpdb;
+
+        return $wpdb->get_row($wpdb->prepare(
+            "SELECT *
+             FROM " . self::get_table() . "
+             WHERE group_id = %d
+               AND recall_user_id = %d
+               AND injection_chain_number = %d
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1",
+            (int) $group_id,
+            (int) $recall_user_id,
+            (int) $chain_number
+        ));
+    }
+
+    public static function chain_has_child($parent_progress_id) {
+        global $wpdb;
+
+        $count = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*)
+             FROM " . self::get_table() . "
+             WHERE parent_progress_id = %d",
+            (int) $parent_progress_id
+        ));
+
+        return $count > 0;
+    }
+
+    public static function get_unlock_date_from_first_answer($first_answered_at) {
+        if (empty($first_answered_at)) {
+            return null;
+        }
+
+        try {
+            $dt = new DateTimeImmutable((string) $first_answered_at, wp_timezone());
+            return $dt->modify('+3 days')->format('Y-m-d');
+        } catch (Exception $e) {
+            return null;
+        }
+    }
+
+    public static function create_initial_progress($group_id, $recall_user_id, $question_id, $question_order_index, $today = null, $chain_number = null, $parent_progress_id = null) {
         global $wpdb;
 
         if (!$today) {
@@ -321,6 +364,8 @@ class InSkill_Recall_V2_Progress_Service {
             'question_id'                  => (int) $question_id,
             'question_order_index'         => (int) $question_order_index,
             'is_initially_assigned'        => 1,
+            'injection_chain_number'       => $chain_number !== null ? (int) $chain_number : null,
+            'parent_progress_id'           => $parent_progress_id !== null ? (int) $parent_progress_id : null,
             'current_level'                => self::LEVEL_NV0,
             'current_state'                => self::STATE_ACTIVE,
             'first_presented_at'           => null,
@@ -404,6 +449,8 @@ class InSkill_Recall_V2_Progress_Service {
             $points_column = 'awarded_nv5_points';
         }
 
+        $bonus_count_increment = ((int) $speed_bonus_awarded > 0) ? 1 : 0;
+
         $update = [
             'current_level'               => $next_level,
             'current_state'               => $transition['next_state'],
@@ -417,7 +464,7 @@ class InSkill_Recall_V2_Progress_Service {
             'consecutive_unanswered_days' => 0,
             'total_answers_count'         => ((int) $progress->total_answers_count) + 1,
             'total_correct_count'         => ((int) $progress->total_correct_count) + 1,
-            'speed_bonus_count'           => ((int) $progress->speed_bonus_count) + ((int) $speed_bonus_awarded > 0 ? 1 : 0),
+            'speed_bonus_count'           => ((int) $progress->speed_bonus_count) + $bonus_count_increment,
             'mastered_at'                 => $transition['mastered_at'],
             'updated_at'                  => self::now_mysql(),
         ];

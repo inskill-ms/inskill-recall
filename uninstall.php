@@ -9,9 +9,6 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 
 require_once plugin_dir_path(__FILE__) . 'includes/class-inskill-recall-db.php';
 
-/**
- * Supprime toutes les options du plugin.
- */
 $options = [
     'inskill_recall_db_version',
     'inskill_recall_dashboard_page_id',
@@ -26,7 +23,9 @@ foreach ($options as $option_name) {
     delete_site_option($option_name);
 }
 
-/**
- * Supprime toutes les tables du plugin.
- */
+$page_id = (int) get_option('inskill_recall_dashboard_page_id', 0);
+if ($page_id > 0) {
+    wp_delete_post($page_id, true);
+}
+
 InSkill_Recall_DB::drop_tables();
