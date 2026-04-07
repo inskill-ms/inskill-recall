@@ -15,6 +15,15 @@ class InSkill_Recall_Admin_Actions {
             case 'create_dashboard_page':
                 $this->create_dashboard_page();
                 break;
+            case 'save_test_datetime':
+                $this->save_test_datetime();
+                break;
+            case 'clear_test_datetime':
+                $this->clear_test_datetime();
+                break;
+            case 'run_test_engine_now':
+                $this->run_test_engine_now();
+                break;
             case 'save_user':
                 $this->save_user();
                 break;
@@ -29,6 +38,9 @@ class InSkill_Recall_Admin_Actions {
                 break;
             case 'delete_group':
                 $this->delete_group();
+                break;
+            case 'duplicate_group':
+                $this->duplicate_group();
                 break;
             case 'save_question':
                 $this->save_question();
@@ -54,6 +66,40 @@ class InSkill_Recall_Admin_Actions {
     private function create_dashboard_page() {
         $page_id = InSkill_Recall_Frontend::ensure_dashboard_page_exists();
         $this->redirect('inskill-recall', ['message' => $page_id > 0 ? 'dashboard_page_created' : 'dashboard_page_error']);
+    }
+
+    private function save_test_datetime() {
+        $raw = isset($_POST['test_datetime']) ? wp_unslash($_POST['test_datetime']) : '';
+        $normalized = InSkill_Recall_Time::parse_datetime_local_input($raw);
+
+        if ($normalized === '') {
+            $this->redirect('inskill-recall', ['message' => 'test_datetime_error']);
+        }
+
+        InSkill_Recall_Time::set_forced_datetime($normalized);
+        $this->redirect('inskill-recall', ['message' => 'test_datetime_saved']);
+    }
+
+    private function clear_test_datetime() {
+        InSkill_Recall_Time::clear_forced_datetime();
+        $this->redirect('inskill-recall', ['message' => 'test_datetime_cleared']);
+    }
+
+    private function run_test_engine_now() {
+        try {
+            // Ordre logique d’un run manuel de test :
+            // 1) clôturer les pending des jours précédents
+            // 2) appliquer les rétrogradations de midi si la date simulée les déclenche
+            // 3) préparer les occurrences dues pour "aujourd’hui"
+            InSkill_Recall_V2_Engine::close_pending_occurrences_for_previous_days();
+            InSkill_Recall_V2_Engine::run_midday_downgrades();
+            InSkill_Recall_V2_Engine::prepare_all_due_occurrences_for_today();
+
+            $this->redirect('inskill-recall', ['message' => 'test_engine_ran']);
+        } catch (Throwable $e) {
+            error_log('[InSkill Recall] run_test_engine_now failed: ' . $e->getMessage());
+            $this->redirect('inskill-recall', ['message' => 'test_engine_error']);
+        }
     }
 
     private function save_user() {
@@ -141,6 +187,21 @@ class InSkill_Recall_Admin_Actions {
         $this->redirect('inskill-recall-groups', ['message' => 'group_delete_error']);
     }
 
+    private function duplicate_group() {
+        $group_id = isset($_POST['group_id']) ? (int) $_POST['group_id'] : 0;
+
+        if ($group_id <= 0) {
+            $this->redirect('inskill-recall-groups', ['message' => 'group_duplicate_error']);
+        }
+
+        $new_group_id = $this->repository->duplicate_group($group_id);
+
+        $this->redirect('inskill-recall-groups', [
+            'message' => $new_group_id > 0 ? 'group_duplicated' : 'group_duplicate_error',
+            'edit_group' => $new_group_id > 0 ? $new_group_id : 0,
+        ]);
+    }
+
     private function save_question() {
         $question_id = isset($_POST['question_id']) ? (int) $_POST['question_id'] : 0;
         $creation_mode = isset($_POST['question_creation_mode']) ? sanitize_key(wp_unslash($_POST['question_creation_mode'])) : 'new';
@@ -155,25 +216,6 @@ class InSkill_Recall_Admin_Actions {
             'image_url' => isset($_POST['image_url']) ? wp_unslash($_POST['image_url']) : '',
             'status' => isset($_POST['status']) ? wp_unslash($_POST['status']) : 'active',
         ];
-
-        if ($question_id > 0) {
-            $existing = $this->repository->get_question($question_id);
-            if ($existing) {
-                $data['internal_label'] = (string) $existing->internal_label;
-                $data['group_id'] = (int) $existing->group_id;
-                $data['question_type'] = (string) $existing->question_type;
-
-                if (!$this->repository->question_has_activity($question_id)) {
-                    $data['group_id'] = isset($_POST['group_id']) ? (int) $_POST['group_id'] : $data['group_id'];
-                    $data['question_type'] = isset($_POST['question_type']) ? wp_unslash($_POST['question_type']) : $data['question_type'];
-                    $data['internal_label'] = isset($_POST['internal_label']) ? wp_unslash($_POST['internal_label']) : $data['internal_label'];
-                }
-            }
-        } else {
-            if ($creation_mode === 'insert') {
-                $data['internal_label'] = isset($_POST['internal_label']) ? wp_unslash($_POST['internal_label']) : '';
-            }
-        }
 
         $choice_texts = isset($_POST['choice_text']) ? (array) $_POST['choice_text'] : [];
         $choice_correct = isset($_POST['choice_is_correct']) ? (array) $_POST['choice_is_correct'] : [];
@@ -197,6 +239,19 @@ class InSkill_Recall_Admin_Actions {
         }
 
         if ($question_id > 0) {
+            $existing = $this->repository->get_question($question_id);
+            if ($existing) {
+                $data['internal_label'] = (string) $existing->internal_label;
+                $data['group_id'] = (int) $existing->group_id;
+                $data['question_type'] = (string) $existing->question_type;
+
+                if (!$this->repository->question_has_activity($question_id)) {
+                    $data['group_id'] = isset($_POST['group_id']) ? (int) $_POST['group_id'] : $data['group_id'];
+                    $data['question_type'] = isset($_POST['question_type']) ? wp_unslash($_POST['question_type']) : $data['question_type'];
+                    $data['internal_label'] = isset($_POST['internal_label']) ? wp_unslash($_POST['internal_label']) : $data['internal_label'];
+                }
+            }
+
             $updated = $this->repository->update_question($question_id, $data, $choices);
             if (is_wp_error($updated)) {
                 $this->redirect('inskill-recall-questions', [
@@ -205,6 +260,7 @@ class InSkill_Recall_Admin_Actions {
                     'edit_question' => $question_id,
                 ]);
             }
+
             $this->redirect('inskill-recall-questions', ['message' => 'question_updated']);
         }
 

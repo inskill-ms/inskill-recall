@@ -15,7 +15,7 @@ class InSkill_Recall_V2_Status_Service {
 
         try {
             $last = new DateTimeImmutable($last_answer_at, wp_timezone());
-            $now = new DateTimeImmutable('now', wp_timezone());
+            $now = new DateTimeImmutable(InSkill_Recall_Time::now_mysql(), wp_timezone());
             $diffDays = (int) $last->diff($now)->format('%a');
 
             if ($diffDays >= 5) {

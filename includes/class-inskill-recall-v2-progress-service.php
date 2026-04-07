@@ -21,11 +21,11 @@ class InSkill_Recall_V2_Progress_Service {
     }
 
     public static function now_mysql() {
-        return current_time('mysql');
+        return InSkill_Recall_Time::now_mysql();
     }
 
     public static function today_date() {
-        return wp_date('Y-m-d', current_time('timestamp'), wp_timezone());
+        return InSkill_Recall_Time::today_date();
     }
 
     public static function due_datetime_for_date($date) {
@@ -301,6 +301,89 @@ class InSkill_Recall_V2_Progress_Service {
         ));
     }
 
+    public static function mark_presented($progress_id, $presented_date = null) {
+        global $wpdb;
+
+        $progress_id = (int) $progress_id;
+        if ($progress_id <= 0) {
+            return false;
+        }
+
+        if (!$presented_date) {
+            $presented_date = self::today_date();
+        }
+
+        $progress = self::get_progress($progress_id);
+        if (!$progress) {
+            return false;
+        }
+
+        $presented_at = self::due_datetime_for_date($presented_date);
+        $total_presentations_count = isset($progress->total_presentations_count)
+            ? ((int) $progress->total_presentations_count + 1)
+            : 1;
+
+        $first_presented_at = !empty($progress->first_presented_at)
+            ? $progress->first_presented_at
+            : $presented_at;
+
+        return false !== $wpdb->update(
+            self::get_table(),
+            [
+                'first_presented_at'        => $first_presented_at,
+                'last_presented_at'         => $presented_at,
+                'total_presentations_count' => $total_presentations_count,
+                'updated_at'                => self::now_mysql(),
+            ],
+            ['id' => $progress_id]
+        );
+    }
+
+    public static function get_correct_transition($current_level, $answer_date) {
+        $current_level = (string) $current_level;
+        $answer_date = (string) $answer_date;
+
+        switch ($current_level) {
+            case self::LEVEL_NV0:
+                $next_level = self::LEVEL_NV1;
+                break;
+            case self::LEVEL_NV1:
+                $next_level = self::LEVEL_NV2;
+                break;
+            case self::LEVEL_NV2:
+                $next_level = self::LEVEL_NV3;
+                break;
+            case self::LEVEL_NV3:
+                $next_level = self::LEVEL_NV4;
+                break;
+            case self::LEVEL_NV4:
+                $next_level = self::LEVEL_NV5;
+                break;
+            case self::LEVEL_NV5:
+                $next_level = self::LEVEL_MASTERED;
+                break;
+            case self::LEVEL_MASTERED:
+            default:
+                $next_level = self::LEVEL_MASTERED;
+                break;
+        }
+
+        $next_due_date = ($next_level !== self::LEVEL_MASTERED)
+            ? self::compute_next_due_date_after_answer($next_level, $answer_date)
+            : null;
+
+        $downgrade_on_date = ($next_level !== self::LEVEL_MASTERED && $next_due_date)
+            ? self::compute_downgrade_date_for_level($next_level, $next_due_date)
+            : null;
+
+        return [
+            'current_level'     => $current_level,
+            'next_level'        => $next_level,
+            'next_due_date'     => $next_due_date,
+            'downgrade_on_date' => $downgrade_on_date,
+        ];
+    }
+
     public static function apply_answer_result($progress_id, $is_correct, $today, $new_level, $awarded_points = 0, $speed_bonus_awarded = 0) {
         global $wpdb;
 
@@ -370,6 +453,54 @@ class InSkill_Recall_V2_Progress_Service {
         );
     }
 
+    public static function apply_correct_answer($progress_id, $today, $speed_bonus_awarded = 0) {
+        $progress = self::get_progress($progress_id);
+        if (!$progress) {
+            return false;
+        }
+
+        $transition = self::get_correct_transition((string) $progress->current_level, (string) $today);
+        $awarded_points = 0;
+
+        switch ($transition['next_level']) {
+            case self::LEVEL_NV1:
+                $awarded_points = empty($progress->awarded_nv1_points) ? self::get_level_points(self::LEVEL_NV1) : 0;
+                break;
+            case self::LEVEL_NV2:
+                $awarded_points = empty($progress->awarded_nv2_points) ? self::get_level_points(self::LEVEL_NV2) : 0;
+                break;
+            case self::LEVEL_NV3:
+                $awarded_points = empty($progress->awarded_nv3_points) ? self::get_level_points(self::LEVEL_NV3) : 0;
+                break;
+            case self::LEVEL_NV4:
+                $awarded_points = empty($progress->awarded_nv4_points) ? self::get_level_points(self::LEVEL_NV4) : 0;
+                break;
+            case self::LEVEL_NV5:
+                $awarded_points = empty($progress->awarded_nv5_points) ? self::get_level_points(self::LEVEL_NV5) : 0;
+                break;
+        }
+
+        return self::apply_answer_result(
+            $progress_id,
+            true,
+            $today,
+            $transition['next_level'],
+            $awarded_points,
+            (int) $speed_bonus_awarded
+        );
+    }
+
+    public static function apply_incorrect_answer($progress_id, $today) {
+        return self::apply_answer_result(
+            $progress_id,
+            false,
+            $today,
+            self::LEVEL_NV0,
+            0,
+            0
+        );
+    }
+
     public static function apply_unanswered($progress_id, $today, $penalty = 1) {
         global $wpdb;
 
@@ -390,6 +521,7 @@ class InSkill_Recall_V2_Progress_Service {
         }
 
         $nextDate = self::add_days($today, 1);
+        $downgradeDate = self::compute_downgrade_date_for_level($newLevel, $nextDate);
 
         return false !== $wpdb->update(
             self::get_table(),
@@ -402,8 +534,8 @@ class InSkill_Recall_V2_Progress_Service {
                 'penalty_points_total'        => (int) $progress->penalty_points_total + (int) $penalty,
                 'next_due_date'               => $nextDate,
                 'next_due_at'                 => self::due_datetime_for_date($nextDate),
-                'downgrade_on_date'           => self::compute_downgrade_date_for_level($newLevel, $nextDate),
-                'downgrade_at'                => self::compute_downgrade_date_for_level($newLevel, $nextDate) ? self::downgrade_datetime_for_date(self::compute_downgrade_date_for_level($newLevel, $nextDate)) : null,
+                'downgrade_on_date'           => $downgradeDate,
+                'downgrade_at'                => $downgradeDate ? self::downgrade_datetime_for_date($downgradeDate) : null,
                 'updated_at'                  => self::now_mysql(),
             ],
             ['id' => (int) $progress_id]
@@ -420,6 +552,7 @@ class InSkill_Recall_V2_Progress_Service {
 
         $newLevel = self::compute_midday_downgraded_level($progress->current_level);
         $nextDate = $today;
+        $downgradeDate = self::compute_downgrade_date_for_level($newLevel, $nextDate);
 
         return false !== $wpdb->update(
             self::get_table(),
@@ -429,8 +562,8 @@ class InSkill_Recall_V2_Progress_Service {
                 'consecutive_unanswered_days' => 0,
                 'next_due_date'               => $nextDate,
                 'next_due_at'                 => self::due_datetime_for_date($nextDate),
-                'downgrade_on_date'           => self::compute_downgrade_date_for_level($newLevel, $nextDate),
-                'downgrade_at'                => self::compute_downgrade_date_for_level($newLevel, $nextDate) ? self::downgrade_datetime_for_date(self::compute_downgrade_date_for_level($newLevel, $nextDate)) : null,
+                'downgrade_on_date'           => $downgradeDate,
+                'downgrade_at'                => $downgradeDate ? self::downgrade_datetime_for_date($downgradeDate) : null,
                 'updated_at'                  => self::now_mysql(),
             ],
             ['id' => (int) $progress_id]

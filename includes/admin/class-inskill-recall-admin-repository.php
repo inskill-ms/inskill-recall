@@ -162,6 +162,75 @@ class InSkill_Recall_Admin_Repository {
         return false !== $wpdb->delete($this->table('groups'), ['id' => (int) $group_id]);
     }
 
+    public function duplicate_group($group_id) {
+        global $wpdb;
+
+        $group_id = (int) $group_id;
+        if ($group_id <= 0) {
+            return 0;
+        }
+
+        $source_group = $this->get_group($group_id);
+        if (!$source_group) {
+            return 0;
+        }
+
+        $today = current_time('Y-m-d');
+
+        $new_group_id = $this->create_group([
+            'name' => sprintf('%s — Copie', (string) $source_group->name),
+            'description' => (string) $source_group->description,
+            'start_date' => $today,
+            'status' => 'inactive',
+            'leaderboard_mode' => (string) $source_group->leaderboard_mode,
+            'question_order_mode' => (string) $source_group->question_order_mode,
+        ]);
+
+        if ($new_group_id <= 0) {
+            return 0;
+        }
+
+        $questions = $this->get_questions($group_id);
+        $question_id_map = [];
+
+        foreach ($questions as $question) {
+            $created_question_id = $this->create_question([
+                'group_id' => $new_group_id,
+                'internal_label' => (string) $question->internal_label,
+                'question_type' => (string) $question->question_type,
+                'question_text' => (string) $question->question_text,
+                'explanation' => (string) $question->explanation,
+                'image_id' => !empty($question->image_id) ? (int) $question->image_id : null,
+                'image_url' => !empty($question->image_url) ? (string) $question->image_url : '',
+                'status' => (string) $question->status,
+            ], $this->get_question_choices_payload((int) $question->id));
+
+            if (is_wp_error($created_question_id) || (int) $created_question_id <= 0) {
+                continue;
+            }
+
+            $question_id_map[(int) $question->id] = (int) $created_question_id;
+        }
+
+        return $new_group_id;
+    }
+
+    private function get_question_choices_payload($question_id) {
+        $choices = $this->get_question_choices((int) $question_id);
+        $payload = [];
+
+        foreach ($choices as $choice) {
+            $payload[] = [
+                'choice_text' => (string) $choice->choice_text,
+                'image_id' => !empty($choice->image_id) ? (int) $choice->image_id : null,
+                'image_url' => !empty($choice->image_url) ? (string) $choice->image_url : '',
+                'is_correct' => !empty($choice->is_correct) ? 1 : 0,
+            ];
+        }
+
+        return $payload;
+    }
+
     public function get_group_memberships($group_id) {
         global $wpdb;
 

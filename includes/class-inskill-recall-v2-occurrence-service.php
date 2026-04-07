@@ -9,11 +9,11 @@ class InSkill_Recall_V2_Occurrence_Service {
     }
 
     public static function now_mysql() {
-        return current_time('mysql');
+        return InSkill_Recall_Time::now_mysql();
     }
 
     public static function today_date() {
-        return wp_date('Y-m-d', current_time('timestamp'), wp_timezone());
+        return InSkill_Recall_Time::today_date();
     }
 
     public static function get_occurrence($occurrence_id) {
@@ -58,11 +58,11 @@ class InSkill_Recall_V2_Occurrence_Service {
             'recall_user_id'          => (int) $progress->recall_user_id,
             'question_id'             => (int) $progress->question_id,
             'progress_id'             => (int) $progress->id,
-            'scheduled_date'          => $scheduled_date,
+            'scheduled_date'          => (string) $scheduled_date,
             'scheduled_at'            => InSkill_Recall_V2_Progress_Service::due_datetime_for_date($scheduled_date),
-            'display_level'           => $progress->current_level,
+            'display_level'           => (string) $progress->current_level,
             'effective_level'         => null,
-            'occurrence_type'         => $occurrence_type,
+            'occurrence_type'         => (string) $occurrence_type,
             'status'                  => 'pending',
             'answered_at'             => null,
             'selected_choice_ids_json'=> null,
@@ -74,7 +74,7 @@ class InSkill_Recall_V2_Occurrence_Service {
             'updated_at'              => $now,
         ]);
 
-        InSkill_Recall_V2_Progress_Service::mark_presented((int) $progress->id);
+        InSkill_Recall_V2_Progress_Service::mark_presented((int) $progress->id, $scheduled_date);
 
         return self::get_occurrence((int) $wpdb->insert_id);
     }
@@ -83,7 +83,8 @@ class InSkill_Recall_V2_Occurrence_Service {
         global $wpdb;
 
         return $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM " . self::get_table() . "
+            "SELECT *
+             FROM " . self::get_table() . "
              WHERE group_id = %d
                AND recall_user_id = %d
                AND scheduled_date = %s
@@ -91,7 +92,7 @@ class InSkill_Recall_V2_Occurrence_Service {
              ORDER BY scheduled_at ASC, id ASC",
             (int) $group_id,
             (int) $recall_user_id,
-            $scheduled_date
+            (string) $scheduled_date
         ));
     }
 
@@ -99,13 +100,14 @@ class InSkill_Recall_V2_Occurrence_Service {
         global $wpdb;
 
         return $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM " . self::get_table() . "
+            "SELECT *
+             FROM " . self::get_table() . "
              WHERE progress_id = %d
                AND scheduled_date = %s
                AND status = 'pending'
              LIMIT 1",
             (int) $progress_id,
-            $scheduled_date
+            (string) $scheduled_date
         ));
     }
 
@@ -196,10 +198,10 @@ class InSkill_Recall_V2_Occurrence_Service {
         return false !== $wpdb->update(
             self::get_table(),
             [
-                'status'            => 'unanswered',
-                'effective_level'   => $effective_level,
-                'penalty_applied'   => (int) $penalty_applied,
-                'updated_at'        => self::now_mysql(),
+                'status'          => 'unanswered',
+                'effective_level' => $effective_level,
+                'penalty_applied' => (int) $penalty_applied,
+                'updated_at'      => self::now_mysql(),
             ],
             ['id' => (int) $occurrence_id]
         );

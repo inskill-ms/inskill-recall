@@ -2,7 +2,7 @@
 /**
  * Plugin Name: InSkill Recall
  * Description: Plugin d'ancrage mémoriel v2 avec accès sécurisé par lien personnel et notifications web push.
- * Version: 0.6.2
+ * Version: 0.6.4
  * Author: OpenAI
  * Text Domain: inskill-recall
  */
@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('INSKILL_RECALL_VERSION', '0.6.2');
+define('INSKILL_RECALL_VERSION', '0.6.4');
 define('INSKILL_RECALL_PLUGIN_FILE', __FILE__);
 define('INSKILL_RECALL_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('INSKILL_RECALL_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -24,6 +24,7 @@ if (file_exists($autoload)) {
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-db.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-auth.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-push.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-time.php';
 
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-v2-progress-service.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-v2-occurrence-service.php';
@@ -42,6 +43,8 @@ require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-ad
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-page-stats.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-admin.php';
 
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/frontend/class-inskill-recall-frontend-core.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/frontend/class-inskill-recall-frontend-dashboard.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-frontend.php';
 
 register_activation_hook(__FILE__, function () {

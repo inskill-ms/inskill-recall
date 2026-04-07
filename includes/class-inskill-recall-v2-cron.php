@@ -60,8 +60,7 @@ class InSkill_Recall_V2_Cron {
         $today = InSkill_Recall_V2_Progress_Service::today_date();
         $alreadyRun = (string) get_option(self::MIDDAY_OPTION, '');
 
-        $now = new DateTimeImmutable('now', wp_timezone());
-        $currentHourMinute = $now->format('H:i');
+        $currentHourMinute = substr(InSkill_Recall_Time::now_mysql(), 11, 5);
 
         if ($currentHourMinute < '12:00') {
             return;
@@ -98,7 +97,8 @@ class InSkill_Recall_V2_Cron {
 
         try {
             $tz = new DateTimeZone($timezone);
-            $now = new DateTimeImmutable('now', $tz);
+            $now = new DateTimeImmutable(InSkill_Recall_Time::now_mysql(), wp_timezone());
+            $now = $now->setTimezone($tz);
         } catch (Exception $e) {
             return false;
         }
@@ -248,10 +248,10 @@ class InSkill_Recall_V2_Cron {
                 'title'             => isset($payload['title']) ? (string) $payload['title'] : 'InSkill Recall',
                 'body'              => isset($payload['body']) ? (string) $payload['body'] : '',
                 'payload_json'      => wp_json_encode($payload),
-                'sent_at'           => current_time('mysql'),
+                'sent_at'           => InSkill_Recall_Time::now_mysql(),
                 'status'            => (string) $status,
                 'error_message'     => $error_message,
-                'created_at'        => current_time('mysql'),
+                'created_at'        => InSkill_Recall_Time::now_mysql(),
             ]
         );
     }

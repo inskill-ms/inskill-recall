@@ -59,7 +59,14 @@ class InSkill_Recall_V2_Engine {
             InSkill_Recall_V2_Occurrence_Service::ensure_occurrence_exists($progress, $today, $occurrence_type);
         }
 
-        $newAssignments = self::compute_new_question_assignments($group_id, $recall_user_id, $today, $group->question_order_mode);
+        $newAssignments = self::compute_new_question_assignments(
+            $group_id,
+            $recall_user_id,
+            $today,
+            $group->question_order_mode
+        );
+
+        $nextQuestionOrderIndex = InSkill_Recall_V2_Progress_Service::count_progress_rows($group_id, $recall_user_id) + 1;
 
         foreach ($newAssignments as $assignment) {
             $question = $assignment['question'];
@@ -68,16 +75,36 @@ class InSkill_Recall_V2_Engine {
                 $group_id,
                 $recall_user_id,
                 (int) $question->id,
-                (int) $question->id,
+                (int) $nextQuestionOrderIndex,
                 $today,
                 (int) $assignment['chain_number'],
                 $assignment['parent_progress_id'] !== null ? (int) $assignment['parent_progress_id'] : null
             );
 
-            InSkill_Recall_V2_Occurrence_Service::ensure_occurrence_exists($progress, $today, 'new');
+            if ($progress) {
+                InSkill_Recall_V2_Occurrence_Service::ensure_occurrence_exists($progress, $today, 'new');
+                $nextQuestionOrderIndex++;
+            }
         }
 
         InSkill_Recall_V2_Scoring_Service::recalculate_user_group_stats($group_id, $recall_user_id);
+    }
+
+    /**
+     * Chaînes initiales attendues en J1 : 1 et 2.
+     * Si l’une des deux manque, on complète automatiquement.
+     */
+    protected static function get_missing_initial_chain_numbers($group_id, $recall_user_id) {
+        $missing = [];
+
+        foreach ([1, 2] as $chainNumber) {
+            $tip = InSkill_Recall_V2_Progress_Service::get_chain_tip($group_id, $recall_user_id, $chainNumber);
+            if (!$tip) {
+                $missing[] = $chainNumber;
+            }
+        }
+
+        return $missing;
     }
 
     /**
@@ -88,6 +115,10 @@ class InSkill_Recall_V2_Engine {
      * - déblocage 3 jours après sa première réponse
      * - une non-réponse ne débloque rien
      * - donc jamais plus de 2 nouvelles questions sur une même journée
+     *
+     * Patch J1 :
+     * - si l’état initial est partiel (ex. 1 seule chaîne créée), on complète la/les chaîne(s) manquante(s)
+     * - comportement idempotent : plusieurs appels ne doivent pas créer plus de 2 chaînes initiales
      */
     public static function compute_new_question_assignments($group_id, $recall_user_id, $today = null, $question_order_mode = 'ordered') {
         if (!$today) {
@@ -96,25 +127,41 @@ class InSkill_Recall_V2_Engine {
 
         $assignedCount = InSkill_Recall_V2_Progress_Service::count_progress_rows($group_id, $recall_user_id);
 
-        // J1 : exactement 2 nouvelles questions si possible
-        if ($assignedCount === 0) {
-            $questions = InSkill_Recall_V2_Progress_Service::get_next_never_seen_questions(
-                $group_id,
-                $recall_user_id,
-                2,
-                $question_order_mode
-            );
+        /**
+         * Initialisation J1 robuste :
+         * - si 0 progression => créer 2 chaînes si possible
+         * - si 1 progression => compléter la chaîne manquante
+         * - si >= 2 => logique normale de déblocage
+         */
+        if ($assignedCount < 2) {
+            $missingChainNumbers = self::get_missing_initial_chain_numbers($group_id, $recall_user_id);
 
-            $assignments = [];
-            foreach ($questions as $index => $question) {
-                $assignments[] = [
-                    'question' => $question,
-                    'chain_number' => $index + 1, // 1 puis 2
-                    'parent_progress_id' => null,
-                ];
+            if (!empty($missingChainNumbers)) {
+                $questions = InSkill_Recall_V2_Progress_Service::get_next_never_seen_questions(
+                    $group_id,
+                    $recall_user_id,
+                    count($missingChainNumbers),
+                    $question_order_mode
+                );
+
+                $assignments = [];
+
+                foreach ($missingChainNumbers as $index => $chainNumber) {
+                    if (!isset($questions[$index])) {
+                        break;
+                    }
+
+                    $assignments[] = [
+                        'question' => $questions[$index],
+                        'chain_number' => (int) $chainNumber,
+                        'parent_progress_id' => null,
+                    ];
+                }
+
+                if (!empty($assignments)) {
+                    return $assignments;
+                }
             }
-
-            return $assignments;
         }
 
         $eligibleChainAssignments = [];
@@ -162,6 +209,7 @@ class InSkill_Recall_V2_Engine {
         }
 
         $assignments = [];
+
         foreach ($eligibleChainAssignments as $index => $chainAssignment) {
             if (!isset($questions[$index])) {
                 break;
@@ -337,5 +385,3 @@ class InSkill_Recall_V2_Engine {
         }
     }
 }
-
-

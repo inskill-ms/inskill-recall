@@ -4,6 +4,8 @@ if (!defined('ABSPATH')) {
 }
 
 class InSkill_Recall_V2_Scoring_Service {
+    const SPEED_BONUS_POINTS = 5;
+
     public static function get_stats_table() {
         return InSkill_Recall_DB::table('user_group_stats');
     }
@@ -44,7 +46,7 @@ class InSkill_Recall_V2_Scoring_Service {
 
         $today = InSkill_Recall_V2_Progress_Service::today_date();
 
-        return ((string) $occurrence->scheduled_date === $today) ? 5 : 0;
+        return ((string) $occurrence->scheduled_date === $today) ? self::SPEED_BONUS_POINTS : 0;
     }
 
     public static function get_or_create_stats_row($group_id, $recall_user_id) {
@@ -145,7 +147,10 @@ class InSkill_Recall_V2_Scoring_Service {
                 $score_total += InSkill_Recall_V2_Progress_Service::get_level_points(InSkill_Recall_V2_Progress_Service::LEVEL_NV5);
             }
 
-            $speed_bonus_total += (int) $row->speed_bonus_count;
+            // Correction : speed_bonus_count est un compteur, pas un total de points.
+            // Chaque bonus vaut 5 points.
+            $speed_bonus_total += ((int) $row->speed_bonus_count * self::SPEED_BONUS_POINTS);
+
             $penalty_total += (int) $row->penalty_points_total;
             $answers_total += (int) $row->total_answers_count;
             $correct_total += (int) $row->total_correct_count;

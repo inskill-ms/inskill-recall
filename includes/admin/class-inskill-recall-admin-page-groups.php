@@ -20,14 +20,21 @@ class InSkill_Recall_Admin_Page_Groups {
             'group_created' => 'Groupe créé.',
             'group_updated' => 'Groupe mis à jour.',
             'group_deleted' => 'Groupe supprimé.',
+            'group_duplicated' => 'Groupe dupliqué. Le clone a été créé en inactif, sans participants, avec la date de démarrage du jour.',
             'group_create_error' => 'Erreur lors de la création du groupe.',
+            'group_duplicate_error' => 'Erreur lors de la duplication du groupe.',
         ];
 
         if (!isset($map[$message])) {
             return;
         }
 
-        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($map[$message]) . '</p></div>';
+        $class = 'notice notice-success is-dismissible';
+        if (in_array($message, ['group_create_error', 'group_duplicate_error'], true)) {
+            $class = 'notice notice-error is-dismissible';
+        }
+
+        echo '<div class="' . esc_attr($class) . '"><p>' . esc_html($map[$message]) . '</p></div>';
     }
 
     private function get_leaderboard_mode_label($mode) {
@@ -173,6 +180,14 @@ class InSkill_Recall_Admin_Page_Groups {
                                         <td><?php echo esc_html((int) $group->questions_count); ?></td>
                                         <td>
                                             <a class="button button-small" href="<?php echo esc_url(add_query_arg(['page' => 'inskill-recall-groups', 'edit_group' => $group->id], admin_url('admin.php'))); ?>">Éditer</a>
+
+                                            <form method="post" style="display:inline;" onsubmit="return confirm('Dupliquer ce groupe avec ses questions, sans participants ?');">
+                                                <?php wp_nonce_field('inskill_recall_admin_action'); ?>
+                                                <input type="hidden" name="inskill_recall_action" value="duplicate_group">
+                                                <input type="hidden" name="group_id" value="<?php echo esc_attr($group->id); ?>">
+                                                <button type="submit" class="button button-small">Dupliquer</button>
+                                            </form>
+
                                             <form method="post" style="display:inline;" onsubmit="return confirm('Supprimer ce groupe ?');">
                                                 <?php wp_nonce_field('inskill_recall_admin_action'); ?>
                                                 <input type="hidden" name="inskill_recall_action" value="delete_group">
