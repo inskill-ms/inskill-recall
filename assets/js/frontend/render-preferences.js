@@ -186,5 +186,3 @@ window.InSkillRecallPreferences = (function ($, Utils, Api) {
     bindForm: bindForm
   };
 })(jQuery, window.InSkillRecallUtils, window.InSkillRecallApi);
-
-

@@ -199,6 +199,11 @@ class InSkill_Recall_Frontend_Core {
                 'noQuestionTodayMessage' => 'Aucune question n’est prévue aujourd’hui.',
                 'urgentToday' => 'Urgent aujourd’hui',
                 'urgentTomorrow' => 'Urgent demain',
+                'systemTimeTitle' => 'Heure système',
+                'systemTimeTimezone' => 'Fuseau système',
+                'userTimeTitle' => 'Heure utilisateur',
+                'userTimeTimezone' => 'Fuseau utilisateur',
+                'clockSimulatedBadge' => 'Mode test temporel actif',
             ],
         ]);
 

@@ -96,12 +96,6 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
         ));
     }
 
-    /**
-     * Correction v2 :
-     * Les "Prochains rappels" doivent refléter les échéances futures connues
-     * dans user_question_progress, même si aucune occurrence future n’a encore
-     * été matérialisée dans question_occurrences.
-     */
     protected function get_frontend_upcoming($group_id, $recall_user_id, $today) {
         global $wpdb;
 
@@ -181,7 +175,13 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
         $today = InSkill_Recall_V2_Progress_Service::today_date();
 
         $stats = $this->get_stats_for_group((int) $group->id, (int) $user->id);
+
+        // Queue = uniquement les questions encore à faire aujourd’hui
         $queue = InSkill_Recall_V2_Occurrence_Service::get_today_front_queue((int) $group->id, (int) $user->id, $today);
+
+        // Toutes les occurrences du jour = pour le résumé du jour
+        $todayRows = InSkill_Recall_V2_Occurrence_Service::get_all_today_occurrences((int) $group->id, (int) $user->id, $today);
+
         $history = $this->get_frontend_history((int) $group->id, (int) $user->id, $today);
         $upcoming = $this->get_frontend_upcoming((int) $group->id, (int) $user->id, $today);
 
@@ -189,11 +189,7 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
         $todayIncorrect = 0;
         $todayRemaining = 0;
 
-        foreach ($queue as $row) {
-            if (!isset($row->scheduled_date) || (string) $row->scheduled_date !== $today) {
-                continue;
-            }
-
+        foreach ($todayRows as $row) {
             if ($row->status === 'answered_correct') {
                 $todayCorrect++;
             } elseif ($row->status === 'answered_incorrect') {

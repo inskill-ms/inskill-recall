@@ -54,24 +54,24 @@ class InSkill_Recall_V2_Occurrence_Service {
         $now = self::now_mysql();
 
         $wpdb->insert(self::get_table(), [
-            'group_id'                => (int) $progress->group_id,
-            'recall_user_id'          => (int) $progress->recall_user_id,
-            'question_id'             => (int) $progress->question_id,
-            'progress_id'             => (int) $progress->id,
-            'scheduled_date'          => (string) $scheduled_date,
-            'scheduled_at'            => InSkill_Recall_V2_Progress_Service::due_datetime_for_date($scheduled_date),
-            'display_level'           => (string) $progress->current_level,
-            'effective_level'         => null,
-            'occurrence_type'         => (string) $occurrence_type,
-            'status'                  => 'pending',
-            'answered_at'             => null,
-            'selected_choice_ids_json'=> null,
-            'correct_choice_ids_json' => null,
-            'points_awarded'          => 0,
-            'speed_bonus_awarded'     => 0,
-            'penalty_applied'         => 0,
-            'created_at'              => $now,
-            'updated_at'              => $now,
+            'group_id'                 => (int) $progress->group_id,
+            'recall_user_id'           => (int) $progress->recall_user_id,
+            'question_id'              => (int) $progress->question_id,
+            'progress_id'              => (int) $progress->id,
+            'scheduled_date'           => (string) $scheduled_date,
+            'scheduled_at'             => InSkill_Recall_V2_Progress_Service::due_datetime_for_date($scheduled_date),
+            'display_level'            => (string) $progress->current_level,
+            'effective_level'          => null,
+            'occurrence_type'          => (string) $occurrence_type,
+            'status'                   => 'pending',
+            'answered_at'              => null,
+            'selected_choice_ids_json' => null,
+            'correct_choice_ids_json'  => null,
+            'points_awarded'           => 0,
+            'speed_bonus_awarded'      => 0,
+            'penalty_applied'          => 0,
+            'created_at'               => $now,
+            'updated_at'               => $now,
         ]);
 
         InSkill_Recall_V2_Progress_Service::mark_presented((int) $progress->id, $scheduled_date);
@@ -207,7 +207,11 @@ class InSkill_Recall_V2_Occurrence_Service {
         );
     }
 
-    public static function get_today_front_queue($group_id, $recall_user_id, $today = null) {
+    /**
+     * Toutes les occurrences du jour courant.
+     * Sert au résumé du jour (bonnes / erreurs / restantes).
+     */
+    public static function get_all_today_occurrences($group_id, $recall_user_id, $today = null) {
         global $wpdb;
 
         if (!$today) {
@@ -227,8 +231,8 @@ class InSkill_Recall_V2_Occurrence_Service {
              INNER JOIN " . InSkill_Recall_DB::table('questions') . " q ON q.id = o.question_id
              WHERE o.group_id = %d
                AND o.recall_user_id = %d
-               AND o.scheduled_date <= %s
-             ORDER BY o.scheduled_date ASC, o.scheduled_at ASC, o.id ASC",
+               AND o.scheduled_date = %s
+             ORDER BY o.scheduled_at ASC, o.id ASC",
             (int) $group_id,
             (int) $recall_user_id,
             $today
@@ -249,22 +253,26 @@ class InSkill_Recall_V2_Occurrence_Service {
                 return $levelRankB <=> $levelRankA;
             }
 
-            if ($a->scheduled_date !== $b->scheduled_date) {
-                return strcmp($a->scheduled_date, $b->scheduled_date);
-            }
-
             return ((int) $a->question_order_index) <=> ((int) $b->question_order_index);
         });
 
         return $rows;
     }
 
+    /**
+     * Frontend "Questions du jour" :
+     * uniquement les occurrences du jour courant encore à faire.
+     */
+    public static function get_today_front_queue($group_id, $recall_user_id, $today = null) {
+        $rows = self::get_all_today_occurrences($group_id, $recall_user_id, $today);
+
+        return array_values(array_filter($rows, function ($row) {
+            return isset($row->status) && (string) $row->status === 'pending';
+        }));
+    }
+
     public static function compute_front_priority($row, $today) {
         $tomorrow = InSkill_Recall_V2_Progress_Service::add_days($today, 1);
-
-        if ((string) $row->scheduled_date < $today) {
-            return 1;
-        }
 
         if (!empty($row->downgrade_on_date) && (string) $row->downgrade_on_date === $today) {
             return 1;

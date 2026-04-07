@@ -24,6 +24,30 @@ class InSkill_Recall_Frontend extends InSkill_Recall_Frontend_Dashboard {
         add_action('wp_ajax_nopriv_inskill_recall_save_preferences', [$this, 'ajax_save_preferences']);
     }
 
+    protected function get_clock_payload($user) {
+        $system_timezone = wp_timezone_string();
+        if (!$system_timezone) {
+            try {
+                $system_timezone = wp_timezone()->getName();
+            } catch (Exception $e) {
+                $system_timezone = 'UTC';
+            }
+        }
+
+        $preferences = InSkill_Recall_Auth::get_notification_preferences($user);
+        $user_timezone = !empty($preferences['timezone']) ? (string) $preferences['timezone'] : InSkill_Recall_Auth::DEFAULT_NOTIFICATION_TIMEZONE;
+        $user_timezone_label = !empty($preferences['timezone_label']) ? (string) $preferences['timezone_label'] : $user_timezone;
+
+        return [
+            'system_timestamp' => (int) InSkill_Recall_Time::now_timestamp(),
+            'system_timezone' => (string) $system_timezone,
+            'system_is_simulated' => InSkill_Recall_Time::is_test_mode_enabled() ? 1 : 0,
+            'user_timestamp' => time(),
+            'user_timezone' => $user_timezone,
+            'user_timezone_label' => $user_timezone_label,
+        ];
+    }
+
     public function ajax_get_dashboard() {
         try {
             $this->verify_nonce();
@@ -39,6 +63,7 @@ class InSkill_Recall_Frontend extends InSkill_Recall_Frontend_Dashboard {
                     ],
                     'groups' => [],
                     'preferences' => InSkill_Recall_Auth::get_notification_preferences($user),
+                    'clock' => $this->get_clock_payload($user),
                 ]);
             }
 
@@ -55,6 +80,7 @@ class InSkill_Recall_Frontend extends InSkill_Recall_Frontend_Dashboard {
                 ],
                 'groups' => $payloadGroups,
                 'preferences' => InSkill_Recall_Auth::get_notification_preferences($user),
+                'clock' => $this->get_clock_payload($user),
             ]);
         } catch (Throwable $e) {
             $this->debug_log('ajax_get_dashboard_exception', [

@@ -433,6 +433,43 @@
   border: 1px solid #bfdbfe;
 }
 
+.inskill-index-row {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.inskill-index-number {
+  flex: 0 0 64px;
+  text-align: left;
+}
+
+.inskill-index-text {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.inskill-recall-clock-footer {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.inskill-recall-clock-line {
+  margin: 0;
+}
+
+.inskill-recall-clock-label {
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.inskill-recall-clock-suffix {
+  color: #6b7280;
+}
+
 @media (max-width: 640px) {
   .inskill-recall-app {
     margin: 16px auto;
@@ -475,21 +512,8 @@
   .inskill-timezone-select {
     width: 100%;
   }
-}
 
-
-
-.inskill-index-row {
-  align-items: flex-start;
-  justify-content: flex-start;
-}
-
-.inskill-index-number {
-  flex: 0 0 64px;
-  text-align: left;
-}
-
-.inskill-index-text {
-  flex: 1 1 auto;
-  text-align: left;
+  .inskill-recall-clock-footer {
+    font-size: 13px;
+  }
 }

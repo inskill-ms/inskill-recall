@@ -1,4 +1,122 @@
 window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
+  let clockTimer = null;
+  let clockState = null;
+
+  function stopClockTicker() {
+    if (clockTimer) {
+      window.clearInterval(clockTimer);
+      clockTimer = null;
+    }
+    clockState = null;
+  }
+
+  function pad2(value) {
+    return String(value).padStart(2, '0');
+  }
+
+  function formatTimestampForTimezone(timestampMs, timezone) {
+    try {
+      const formatter = new Intl.DateTimeFormat('fr-FR', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+
+      return formatter.format(new Date(timestampMs));
+    } catch (e) {
+      const d = new Date(timestampMs);
+      return [
+        pad2(d.getDate()),
+        pad2(d.getMonth() + 1),
+        d.getFullYear()
+      ].join('/') + ' ' + [
+        pad2(d.getHours()),
+        pad2(d.getMinutes()),
+        pad2(d.getSeconds())
+      ].join(':');
+    }
+  }
+
+  function getClockPayload(state) {
+    return state && state.clock ? state.clock : null;
+  }
+
+  function renderClockFooter(state) {
+    const clock = getClockPayload(state);
+    if (!clock) {
+      return '';
+    }
+
+    const userTimezoneLabel = (
+      state &&
+      state.preferences &&
+      state.preferences.timezone_label
+    ) ? state.preferences.timezone_label : (clock.user_timezone_label || clock.user_timezone || '');
+
+    let systemSuffix = ' - ' + (clock.system_timezone || '');
+    if (Number(clock.system_is_simulated || 0) === 1) {
+      systemSuffix += ' (' + Utils.esc(InSkillRecall.labels.clockSimulatedBadge || 'Mode test temporel actif') + ')';
+    }
+
+    return [
+      '<div class="inskill-recall-clock-footer">',
+      '<div class="inskill-recall-clock-line">',
+      '<span class="inskill-recall-clock-label">' + Utils.esc(InSkillRecall.labels.systemTimeTitle || 'Heure système') + ' :</span> ',
+      '<span id="inskill-system-time-value">--/--/---- --:--:--</span>',
+      '<span class="inskill-recall-clock-suffix">' + Utils.esc(systemSuffix) + '</span>',
+      '</div>',
+      '<div class="inskill-recall-clock-line">',
+      '<span class="inskill-recall-clock-label">' + Utils.esc(InSkillRecall.labels.userTimeTitle || 'Heure utilisateur') + ' :</span> ',
+      '<span id="inskill-user-time-value">--/--/---- --:--:--</span>',
+      '<span class="inskill-recall-clock-suffix"> - ' + Utils.esc(userTimezoneLabel || '') + '</span>',
+      '</div>',
+      '</div>'
+    ].join('');
+  }
+
+  function updateClockDom() {
+    if (!clockState) {
+      return;
+    }
+
+    const elapsedMs = Date.now() - clockState.clientStartedAtMs;
+    const systemTimestampMs = clockState.systemStartedAtMs + elapsedMs;
+    const userTimestampMs = clockState.userStartedAtMs + elapsedMs;
+
+    $('#inskill-system-time-value').text(
+      formatTimestampForTimezone(systemTimestampMs, clockState.systemTimezone)
+    );
+
+    $('#inskill-user-time-value').text(
+      formatTimestampForTimezone(userTimestampMs, clockState.userTimezone)
+    );
+  }
+
+  function startClockTicker(state) {
+    stopClockTicker();
+
+    const clock = getClockPayload(state);
+    if (!clock) {
+      return;
+    }
+
+    clockState = {
+      clientStartedAtMs: Date.now(),
+      systemStartedAtMs: Number(clock.system_timestamp || 0) * 1000,
+      userStartedAtMs: Number(clock.user_timestamp || 0) * 1000,
+      systemTimezone: String(clock.system_timezone || 'UTC'),
+      userTimezone: String(clock.user_timezone || 'UTC')
+    };
+
+    updateClockDom();
+    clockTimer = window.setInterval(updateClockDom, 1000);
+  }
+
   function getGroupById(state, groupId) {
     if (!state || !Array.isArray(state.groups)) {
       return null;
@@ -11,17 +129,6 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
     }
 
     return null;
-  }
-
-  function getQuestionNumberMap(groupPayload) {
-    const map = {};
-    const rows = groupPayload && Array.isArray(groupPayload.question_index) ? groupPayload.question_index : [];
-
-    rows.forEach(function (row, index) {
-      map[String(row.question_id)] = index + 1;
-    });
-
-    return map;
   }
 
   function getQuestionMeta(groupPayload, questionId) {
@@ -75,10 +182,12 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
         '<h2>' + Utils.esc(InSkillRecall.labels.empty) + '</h2>',
         Push.renderNotificationBox(),
         Preferences.renderPreferencesBox(prefsState),
-        '</div>'
+        '</div>',
+        renderClockFooter(state)
       ].join('');
 
       $app.html(htmlEmpty);
+      startClockTicker(state);
       return;
     }
 
@@ -128,7 +237,8 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
       ].join('');
     });
 
-    $app.html(blocks.join(''));
+    $app.html(blocks.join('') + renderClockFooter(state));
+    startClockTicker(state);
   }
 
   function renderQueuePreview(groupPayload, queue) {
@@ -275,8 +385,10 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
       html += '<p class="inskill-empty-line">' + Utils.esc(groupPayload.summary.message || '') + '</p>';
       html += '<div class="inskill-actions"><button class="inskill-btn inskill-btn-secondary" id="inskill-back-dashboard">Retour</button></div>';
       html += '</div>';
+      html += renderClockFooter(state);
 
       $app.html(html);
+      startClockTicker(state);
 
       $('#inskill-back-dashboard').off('click').on('click', function (e) {
         e.preventDefault();
@@ -306,8 +418,10 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
 
     html += '<div class="inskill-actions"><button class="inskill-btn inskill-btn-secondary" id="inskill-back-dashboard">Retour</button></div>';
     html += '</div>';
+    html += renderClockFooter(state);
 
     $app.html(html);
+    startClockTicker(state);
 
     $('#inskill-back-dashboard').off('click').on('click', function (e) {
       e.preventDefault();
@@ -330,6 +444,7 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
       .done(function (resp) {
         if (!resp || !resp.success || !resp.data) {
           $app.html('<div class="inskill-recall-box">Erreur de chargement.</div>');
+          stopClockTicker();
           return;
         }
 
@@ -371,8 +486,10 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
 
         html += '</form>';
         html += '</div>';
+        html += renderClockFooter(state);
 
         $app.html(html);
+        startClockTicker(state);
 
         $('#inskill-back-queue').off('click').on('click', function (e) {
           e.preventDefault();
@@ -390,6 +507,7 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
       })
       .fail(function () {
         $app.html('<div class="inskill-recall-box">Erreur de chargement.</div>');
+        stopClockTicker();
       });
   }
 
@@ -517,8 +635,10 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
 
         html += renderFeedback(item);
         html += '</div>';
+        html += renderClockFooter(state);
 
         $app.html(html);
+        startClockTicker(state);
         bindAfterAnswer(state, $app, groupId, onDone);
       })
       .fail(function () {
@@ -529,6 +649,7 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
   return {
     renderDashboard: renderDashboard,
     renderQueue: renderQueue,
-    renderQuestion: renderQuestion
+    renderQuestion: renderQuestion,
+    stopClockTicker: stopClockTicker
   };
 })(jQuery, window.InSkillRecallUtils, window.InSkillRecallApi, window.InSkillRecallPush, window.InSkillRecallPreferences);

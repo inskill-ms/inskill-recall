@@ -69,7 +69,7 @@ window.InSkillRecallUtils = (function () {
       case 'answered_correct':
         return 'Bonne réponse';
       case 'answered_incorrect':
-        return 'Erreur';
+        return 'Mauvaise réponse';
       case 'unanswered':
         return 'Non répondu';
       default:
