@@ -4,6 +4,19 @@ if (!defined('ABSPATH')) {
 }
 
 class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
+
+    protected function maybe_run_daily_closure() {
+        $today = InSkill_Recall_V2_Progress_Service::today_date();
+        $last_run = (string) get_option('inskill_recall_last_daily_run', '');
+
+        if ($last_run === $today) {
+            return;
+        }
+
+        InSkill_Recall_V2_Engine::close_pending_occurrences_for_previous_days();
+        update_option('inskill_recall_last_daily_run', $today, false);
+    }
+
     protected function get_groups_for_user($recall_user_id) {
         global $wpdb;
 
@@ -60,11 +73,7 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
         global $wpdb;
 
         return $wpdb->get_results($wpdb->prepare(
-            "SELECT
-                p.question_id,
-                p.question_order_index,
-                q.internal_label,
-                q.question_text
+            "SELECT p.question_id, p.question_order_index, q.internal_label, q.question_text
              FROM " . InSkill_Recall_DB::table('user_question_progress') . " p
              INNER JOIN " . InSkill_Recall_DB::table('questions') . " q ON q.id = p.question_id
              WHERE p.group_id = %d
@@ -84,14 +93,11 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
              INNER JOIN " . InSkill_Recall_DB::table('questions') . " q ON q.id = o.question_id
              WHERE o.group_id = %d
                AND o.recall_user_id = %d
-               AND (
-                    o.scheduled_date < %s
-                    OR (o.scheduled_date = %s AND o.status <> 'pending')
-               )
-             ORDER BY o.scheduled_date ASC, o.scheduled_at ASC, o.id ASC",
+               AND o.scheduled_date <= %s
+             ORDER BY o.scheduled_date DESC, o.id DESC
+             LIMIT 50",
             (int) $group_id,
             (int) $recall_user_id,
-            $today,
             $today
         ));
     }
@@ -132,30 +138,53 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
             "SELECT s.*, u.first_name, u.last_name, u.email
              FROM " . InSkill_Recall_DB::table('user_group_stats') . " s
              INNER JOIN " . InSkill_Recall_DB::table('users') . " u ON u.id = s.recall_user_id
+             INNER JOIN " . InSkill_Recall_DB::table('group_memberships') . " gm
+                 ON gm.group_id = s.group_id
+                AND gm.recall_user_id = s.recall_user_id
+                AND gm.status = 'active'
              WHERE s.group_id = %d
              ORDER BY s.score_total DESC, s.last_answer_at DESC, s.recall_user_id ASC",
             (int) $group->id
         ));
 
+        if (empty($rows)) {
+            return [];
+        }
+
+        $rank = 0;
+        $position = 0;
+        $previous_score = null;
+
+        foreach ($rows as $row) {
+            $position++;
+
+            if ($previous_score === null || (int) $row->score_total !== (int) $previous_score) {
+                $rank = $position;
+                $previous_score = (int) $row->score_total;
+            }
+
+            $row->cached_rank = $rank;
+        }
+
         if ($mode === 'A') {
             return $rows;
         }
 
-        $participantCount = count($rows);
-        $topCount = max(3, min(10, (int) ceil($participantCount / 3)));
+        $participant_count = count($rows);
+        $top_count = max(3, min(10, (int) ceil($participant_count / 3)));
 
         if ($mode === 'B') {
             $visible = [];
-            $lastVisibleRank = null;
+            $last_visible_rank = null;
 
             foreach ($rows as $index => $row) {
-                if ($index < $topCount) {
+                if ($index < $top_count) {
                     $visible[] = $row;
-                    $lastVisibleRank = (int) $row->cached_rank;
+                    $last_visible_rank = (int) $row->cached_rank;
                     continue;
                 }
 
-                if ($lastVisibleRank !== null && (int) $row->cached_rank === $lastVisibleRank) {
+                if ($last_visible_rank !== null && (int) $row->cached_rank === $last_visible_rank) {
                     $visible[] = $row;
                     continue;
                 }
@@ -170,6 +199,8 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
     }
 
     protected function build_group_dashboard_payload($group, $user) {
+        $this->maybe_run_daily_closure();
+
         InSkill_Recall_V2_Engine::prepare_daily_questions_for_user((int) $group->id, (int) $user->id);
 
         $today = InSkill_Recall_V2_Progress_Service::today_date();
@@ -218,6 +249,16 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
             $actionLabel = 'Continuer';
         }
 
+        $leaderboard = $this->get_leaderboard_for_group($group);
+        $userRank = null;
+
+        foreach ($leaderboard as $leaderboardRow) {
+            if (isset($leaderboardRow->recall_user_id) && (int) $leaderboardRow->recall_user_id === (int) $user->id) {
+                $userRank = (int) $leaderboardRow->cached_rank;
+                break;
+            }
+        }
+
         return [
             'group' => [
                 'id' => (int) $group->id,
@@ -226,7 +267,7 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
             ],
             'summary' => [
                 'score_total' => $stats ? (int) $stats->score_total : 0,
-                'rank' => $stats && $stats->cached_rank ? (int) $stats->cached_rank : null,
+                'rank' => $userRank,
                 'mastered_questions' => $stats ? (int) $stats->mastered_questions : 0,
                 'total_questions' => $stats ? (int) $stats->total_questions : 0,
                 'participant_status' => $status,
@@ -243,7 +284,7 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
             'question_index' => $this->format_question_index_rows(
                 $this->get_user_question_index((int) $group->id, (int) $user->id)
             ),
-            'leaderboard' => array_map([$this, 'format_leaderboard_row'], $this->get_leaderboard_for_group($group)),
+            'leaderboard' => array_map([$this, 'format_leaderboard_row'], $leaderboard),
             'preferences' => InSkill_Recall_Auth::get_notification_preferences($user),
         ];
     }
