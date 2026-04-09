@@ -10,9 +10,40 @@ class InSkill_Recall_Admin_Page_Notifications {
         $this->repository = $repository;
     }
 
+    private function get_user_label($row) {
+        $first = isset($row->first_name) ? trim((string) $row->first_name) : '';
+        $last  = isset($row->last_name) ? trim((string) $row->last_name) : '';
+        $name  = trim($first . ' ' . $last);
+
+        if ($name !== '') {
+            return $name;
+        }
+
+        if (!empty($row->email)) {
+            return (string) $row->email;
+        }
+
+        return 'Utilisateur inconnu';
+    }
+
+    private function get_recent_active_push_subscriptions($limit = 100) {
+        global $wpdb;
+
+        return $wpdb->get_results($wpdb->prepare(
+            "SELECT s.*, u.first_name, u.last_name, u.email
+             FROM " . InSkill_Recall_DB::table('push_subscriptions') . " s
+             LEFT JOIN " . InSkill_Recall_DB::table('users') . " u ON u.id = s.recall_user_id
+             WHERE s.status = 'active'
+             ORDER BY s.updated_at DESC, s.id DESC
+             LIMIT %d",
+            (int) $limit
+        ));
+    }
+
     public function render() {
         $summary = $this->repository->get_notification_summary();
         $logs = $this->repository->get_notification_logs(100);
+        $subscriptions = $this->get_recent_active_push_subscriptions(100);
 
         $allowed_timezones = (string) get_option(
             'inskill_recall_allowed_timezones',
@@ -71,15 +102,51 @@ class InSkill_Recall_Admin_Page_Notifications {
                     <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;margin-bottom:24px;">
                         <h2 style="margin-top:0;">Résumé</h2>
                         <ul style="margin:0 0 0 18px;">
-                            <li>Abonnements total : <?php echo esc_html($summary['subscriptions_total']); ?></li>
-                            <li>Abonnements actifs : <?php echo esc_html($summary['subscriptions_active']); ?></li>
-                            <li>Logs total : <?php echo esc_html($summary['logs_total']); ?></li>
-                            <li>Logs envoyés : <?php echo esc_html($summary['logs_sent']); ?></li>
+                            <li>Appareils enregistrés : <?php echo esc_html($summary['subscriptions_total']); ?></li>
+                            <li>Appareils actifs : <?php echo esc_html($summary['subscriptions_active']); ?></li>
+                            <li>Notifications journalisées : <?php echo esc_html($summary['logs_total']); ?></li>
+                            <li>Notifications envoyées avec succès : <?php echo esc_html($summary['logs_sent']); ?></li>
                         </ul>
                     </div>
 
+                    <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;margin-bottom:24px;">
+                        <h2 style="margin-top:0;">Appareils abonnés</h2>
+
+                        <table class="widefat striped">
+                            <thead>
+                                <tr>
+                                    <th>Utilisateur</th>
+                                    <th>Statut</th>
+                                    <th>Créé le</th>
+                                    <th>Mis à jour le</th>
+                                    <th>Dernier succès</th>
+                                    <th>Dernière erreur</th>
+                                    <th>Appareil / navigateur</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($subscriptions)) : ?>
+                                    <tr><td colspan="7">Aucun appareil abonné.</td></tr>
+                                <?php else : ?>
+                                    <?php foreach ($subscriptions as $subscription) : ?>
+                                        <tr>
+                                            <td><?php echo esc_html($this->get_user_label($subscription)); ?></td>
+                                            <td><?php echo esc_html($subscription->status ?: '—'); ?></td>
+                                            <td><?php echo esc_html($subscription->created_at ?: '—'); ?></td>
+                                            <td><?php echo esc_html($subscription->updated_at ?: '—'); ?></td>
+                                            <td><?php echo esc_html($subscription->last_success_at ?: '—'); ?></td>
+                                            <td><?php echo esc_html($subscription->last_error_at ?: '—'); ?></td>
+                                            <td><?php echo esc_html($subscription->user_agent ?: '—'); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
                     <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;">
-                        <h2 style="margin-top:0;">Derniers logs</h2>
+                        <h2 style="margin-top:0;">Historique des notifications envoyées</h2>
+                        <p style="margin-top:0;color:#646970;">Cette section liste les notifications réellement envoyées ou en erreur. Elle ne correspond pas à la liste des appareils abonnés.</p>
 
                         <table class="widefat striped">
                             <thead>
@@ -94,12 +161,12 @@ class InSkill_Recall_Admin_Page_Notifications {
                             </thead>
                             <tbody>
                                 <?php if (empty($logs)) : ?>
-                                    <tr><td colspan="6">Aucun log.</td></tr>
+                                    <tr><td colspan="6">Aucune notification journalisée.</td></tr>
                                 <?php else : ?>
                                     <?php foreach ($logs as $log) : ?>
                                         <tr>
                                             <td><?php echo esc_html($log->sent_at); ?></td>
-                                            <td><?php echo esc_html(trim($log->first_name . ' ' . $log->last_name) ?: $log->email); ?></td>
+                                            <td><?php echo esc_html($this->get_user_label($log)); ?></td>
                                             <td><?php echo esc_html($log->group_name ?: '—'); ?></td>
                                             <td><?php echo esc_html($log->notification_type); ?></td>
                                             <td><?php echo esc_html($log->status); ?></td>

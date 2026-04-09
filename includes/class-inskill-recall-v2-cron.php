@@ -130,6 +130,14 @@ class InSkill_Recall_V2_Cron {
         return true;
     }
 
+    protected static function get_next_program_alert_date_for_user($user, $today) {
+        if (!$user) {
+            return InSkill_Recall_V2_Progress_Service::add_days($today, 1);
+        }
+
+        return InSkill_Recall_V2_Progress_Service::get_next_program_date($today, $user, false);
+    }
+
     protected static function send_daily_notifications() {
         if (!class_exists('InSkill_Recall_Push') || !class_exists('InSkill_Recall_Auth')) {
             return;
@@ -197,22 +205,23 @@ class InSkill_Recall_V2_Cron {
 
         global $wpdb;
 
-        $tomorrow = InSkill_Recall_V2_Progress_Service::add_days(
-            InSkill_Recall_V2_Progress_Service::today_date(),
-            1
-        );
+        $today = InSkill_Recall_V2_Progress_Service::today_date();
 
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT DISTINCT group_id, recall_user_id
+        $rows = $wpdb->get_results(
+            "SELECT DISTINCT group_id, recall_user_id, downgrade_on_date
              FROM " . InSkill_Recall_DB::table('user_question_progress') . "
-             WHERE downgrade_on_date = %s
-               AND current_level NOT IN ('nv0', 'mastered')",
-            $tomorrow
-        ));
+             WHERE downgrade_on_date IS NOT NULL
+               AND current_level NOT IN ('nv0', 'mastered')"
+        );
 
         foreach ($rows as $row) {
             $user = InSkill_Recall_Auth::get_user((int) $row->recall_user_id);
             if (!$user) {
+                continue;
+            }
+
+            $targetDate = self::get_next_program_alert_date_for_user($user, $today);
+            if ((string) $row->downgrade_on_date !== (string) $targetDate) {
                 continue;
             }
 

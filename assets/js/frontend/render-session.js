@@ -180,7 +180,6 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
       const htmlEmpty = [
         '<div class="inskill-recall-box">',
         '<h2>' + Utils.esc(InSkillRecall.labels.empty) + '</h2>',
-        Push.renderNotificationBox(),
         Preferences.renderPreferencesBox(prefsState),
         '</div>',
         renderClockFooter(state)
@@ -219,8 +218,6 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
         '<div><strong>' + Utils.esc(summary.today_incorrect || 0) + '</strong><span>Erreurs</span></div>',
         '<div><strong>' + Utils.esc(summary.today_remaining || 0) + '</strong><span>Restantes</span></div>',
         '</div>',
-
-        Push.renderNotificationBox(),
 
         '<div class="inskill-actions">',
         '<button class="inskill-btn inskill-open-queue" data-group-id="' + Utils.esc(group.id) + '">' + Utils.esc(summary.action_label || InSkillRecall.labels.start) + '</button>',
@@ -283,10 +280,12 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
     html += '<div class="inskill-list">';
     rows.forEach(function (row) {
       const meta = getQuestionMeta(groupPayload, row.question_id);
+      const statusIcon = Utils.toOccurrenceStatusIcon(row.status);
+      const statusLabel = Utils.toOccurrenceStatusLabel(row.status);
 
       html += '<div class="inskill-list-row">';
       html += '<div>' + Utils.esc(row.scheduled_date) + '</div>';
-      html += '<div>Q' + Utils.esc(meta.displayNumber) + ' — ' + Utils.esc(row.display_level || '') + ' — ' + Utils.esc(Utils.toOccurrenceStatusIcon(row.status)) + '</div>';
+      html += '<div>Q' + Utils.esc(meta.displayNumber) + ' ' + Utils.esc(row.display_level || '') + ' : ' + Utils.esc(statusIcon) + ' (' + Utils.esc(statusLabel) + ')</div>';
       html += '</div>';
     });
     html += '</div></div>';

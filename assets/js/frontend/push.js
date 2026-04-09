@@ -1,6 +1,8 @@
 window.InSkillRecallPush = (function ($, Utils, Api) {
   let swRegistration = null;
   let pushReadyPromise = null;
+  let $appRoot = null;
+  let onReadyCallback = null;
 
   function isPushAvailable() {
     return (
@@ -10,45 +12,60 @@ window.InSkillRecallPush = (function ($, Utils, Api) {
     );
   }
 
-  function renderNotificationStatus(html) {
-    const $box = $('#inskill-notification-box');
-    if ($box.length) {
-      $box.find('.inskill-notification-status').html(html);
+  function getPermissionState() {
+    if (!isPushAvailable()) {
+      return 'unsupported';
+    }
+
+    return String(Notification.permission || 'default');
+  }
+
+  function getStatusContainer() {
+    return $('#inskill-notification-gate-status');
+  }
+
+  function setAppRoot($root) {
+    $appRoot = $root;
+  }
+
+  function setReadyCallback(callback) {
+    onReadyCallback = typeof callback === 'function' ? callback : null;
+  }
+
+  function triggerReady() {
+    if (typeof onReadyCallback === 'function') {
+      onReadyCallback();
     }
   }
 
-  function renderNotificationHelp(reason, details) {
-    let message = InSkillRecall.labels.notificationsDenied || 'Les notifications ne sont pas activées.';
-
-    if (reason === 'unsupported') {
-      message = InSkillRecall.labels.notificationsUnsupported || 'Ce navigateur ne prend pas correctement en charge les notifications.';
-    } else if (reason === 'save_failed') {
-      message = 'Les notifications ont été autorisées mais l’enregistrement de cet appareil a échoué.';
-    } else if (reason === 'subscribe_failed') {
-      message = 'Impossible d’activer les notifications sur cet appareil.';
-    } else if (reason === 'sw_timeout') {
-      message = 'Le service worker ne répond pas. Rechargez la page puis réessayez.';
+  function renderRoot(html) {
+    if ($appRoot && $appRoot.length) {
+      $appRoot.html(html);
     }
+  }
 
-    if (details) {
-      Utils.log('Notification help:', reason, details);
+  function renderStatus(html) {
+    const $status = getStatusContainer();
+    if ($status.length) {
+      $status.html(html || '');
     }
+  }
 
-    renderNotificationStatus(
-      '<div class="inskill-notification-message inskill-notification-warning">' +
+  function renderMessage(message, type) {
+    const klass = type === 'success'
+      ? 'inskill-notification-success'
+      : 'inskill-notification-warning';
+
+    renderStatus(
+      '<div class="inskill-notification-message ' + klass + '">' +
         Utils.esc(message) +
       '</div>'
     );
   }
 
-  function renderNotificationPending(stepLabel) {
+  function renderPending(stepLabel) {
     const message = stepLabel ? ('Activation en cours… ' + stepLabel) : 'Activation en cours…';
-
-    renderNotificationStatus(
-      '<div class="inskill-notification-message inskill-notification-warning">' +
-        Utils.esc(message) +
-      '</div>'
-    );
+    renderMessage(message, 'warning');
   }
 
   function waitForRegistrationUsable(registration) {
@@ -192,59 +209,294 @@ window.InSkillRecallPush = (function ($, Utils, Api) {
     });
   }
 
-  function activateNotificationsFromClick() {
+  function verifyCurrentAccess() {
+    const permission = getPermissionState();
+
+    if (permission === 'unsupported') {
+      return Promise.resolve({
+        ready: false,
+        state: 'unsupported'
+      });
+    }
+
+    if (permission === 'default') {
+      return Promise.resolve({
+        ready: false,
+        state: 'default'
+      });
+    }
+
+    if (permission === 'denied') {
+      return Promise.resolve({
+        ready: false,
+        state: 'denied'
+      });
+    }
+
+    if (!InSkillRecall.vapidPublicKey) {
+      return Promise.resolve({
+        ready: false,
+        state: 'unsupported',
+        detail: 'missing_vapid_public_key'
+      });
+    }
+
+    return ensureServiceWorkerReady().then(function (registration) {
+      if (!registration) {
+        return {
+          ready: false,
+          state: 'error',
+          reason: 'sw_timeout'
+        };
+      }
+
+      return getOrCreateSubscription(registration)
+        .then(function (subscription) {
+          if (!subscription) {
+            return {
+              ready: false,
+              state: 'error',
+              reason: 'subscribe_failed'
+            };
+          }
+
+          return saveSubscription(subscription)
+            .then(function (resp) {
+              if (resp && resp.success) {
+                return {
+                  ready: true,
+                  state: 'granted'
+                };
+              }
+
+              return {
+                ready: false,
+                state: 'error',
+                reason: 'save_failed',
+                detail: resp
+              };
+            })
+            .catch(function (err) {
+              return {
+                ready: false,
+                state: 'error',
+                reason: 'save_failed',
+                detail: err
+              };
+            });
+        })
+        .catch(function (error) {
+          const msg = String(error && error.message ? error.message : error || '');
+          if (msg.indexOf('subscribe_timeout') !== -1) {
+            return {
+              ready: false,
+              state: 'error',
+              reason: 'subscribe_failed',
+              detail: error
+            };
+          }
+
+          return {
+            ready: false,
+            state: 'error',
+            reason: 'sw_timeout',
+            detail: error
+          };
+        });
+    });
+  }
+
+  function renderGateShell(innerHtml) {
+    return [
+      '<div id="inskill-notification-gate" class="inskill-recall-box inskill-gate-box">',
+      innerHtml,
+      '<div id="inskill-notification-gate-status"></div>',
+      '</div>'
+    ].join('');
+  }
+
+  function renderDefaultIntroScreen() {
+    return renderGateShell([
+      '<div class="inskill-gate-header">',
+      '<div class="inskill-recall-pill">Notifications obligatoires</div>',
+      '<h2 class="inskill-gate-title">Activez les notifications pour accéder à votre espace</h2>',
+      '<p class="inskill-gate-text">Les notifications sont obligatoires pour utiliser InSkill Recall.</p>',
+      '<p class="inskill-gate-text">Quand vous cliquerez sur le bouton d’activation, votre navigateur affichera une demande d’autorisation.</p>',
+      '<p class="inskill-gate-text"><strong>Pour continuer, vous devrez impérativement cliquer sur “Autoriser”.</strong></p>',
+      '</div>',
+      '<div class="inskill-actions">',
+      '<button type="button" class="inskill-btn" id="inskill-notifications-understood">J’ai compris</button>',
+      '</div>'
+    ].join(''));
+  }
+
+  function renderActivationStepScreen() {
+    return renderGateShell([
+      '<div class="inskill-gate-header">',
+      '<div class="inskill-recall-pill">Étape finale</div>',
+      '<h2 class="inskill-gate-title">Activez maintenant les notifications</h2>',
+      '<p class="inskill-gate-text">Après avoir cliqué ci-dessous, le navigateur va vous demander l’autorisation.</p>',
+      '<p class="inskill-gate-text"><strong>Cliquez bien sur “Autoriser”.</strong></p>',
+      '</div>',
+      '<div class="inskill-actions">',
+      '<button type="button" class="inskill-btn" id="inskill-enable-notifications">Activer les notifications</button>',
+      '</div>'
+    ].join(''));
+  }
+
+  function renderDeniedScreen() {
+    return renderGateShell([
+      '<div class="inskill-gate-header">',
+      '<div class="inskill-recall-pill">Notifications requises</div>',
+      '<h2 class="inskill-gate-title">Les notifications sont actuellement bloquées</h2>',
+      '<p class="inskill-gate-text">Pour accéder à votre espace, vous devez autoriser les notifications pour ce site dans votre navigateur, puis revenir sur cette page.</p>',
+      '</div>',
+      '<div class="inskill-actions">',
+      '<button type="button" class="inskill-btn" id="inskill-verify-notifications">J’ai réactivé → vérifier</button>',
+      '</div>'
+    ].join(''));
+  }
+
+  function renderUnsupportedScreen() {
+    return renderGateShell([
+      '<div class="inskill-gate-header">',
+      '<div class="inskill-recall-pill">Notifications indisponibles</div>',
+      '<h2 class="inskill-gate-title">Cet appareil ou ce navigateur n’est pas compatible</h2>',
+      '<p class="inskill-gate-text">Les notifications web sont nécessaires pour utiliser cet outil, mais elles ne sont pas disponibles correctement sur cet appareil ou ce navigateur.</p>',
+      '</div>'
+    ].join(''));
+  }
+
+  function renderCheckingScreen() {
+    return renderGateShell([
+      '<div class="inskill-gate-header">',
+      '<div class="inskill-recall-pill">Vérification</div>',
+      '<h2 class="inskill-gate-title">Vérification des notifications…</h2>',
+      '<p class="inskill-gate-text">Merci de patienter quelques secondes.</p>',
+      '</div>'
+    ].join(''));
+  }
+
+  function showActivationStep() {
+    renderRoot(renderActivationStepScreen());
+  }
+
+  function renderGateScreen() {
+    const permission = getPermissionState();
+
+    if (permission === 'unsupported') {
+      renderRoot(renderUnsupportedScreen());
+      return;
+    }
+
+    if (permission === 'denied') {
+      renderRoot(renderDeniedScreen());
+      return;
+    }
+
+    if (permission === 'granted') {
+      verifyGate();
+      return;
+    }
+
+    renderRoot(renderDefaultIntroScreen());
+  }
+
+  function verifyGate(callback) {
+    renderRoot(renderCheckingScreen());
+    renderPending('vérification…');
+
+    verifyCurrentAccess().then(function (result) {
+      if (result && result.ready) {
+        triggerReady();
+        if (typeof callback === 'function') {
+          callback(true, result);
+        }
+        return;
+      }
+
+      if (!result || result.state === 'unsupported') {
+        renderRoot(renderUnsupportedScreen());
+      } else if (result.state === 'denied') {
+        renderRoot(renderDeniedScreen());
+      } else if (result.state === 'default') {
+        renderRoot(renderDefaultIntroScreen());
+      } else {
+        renderRoot(renderDeniedScreen());
+        renderMessage('Les notifications n’ont pas encore pu être validées sur cet appareil.', 'warning');
+      }
+
+      if (typeof callback === 'function') {
+        callback(false, result || null);
+      }
+    });
+  }
+
+  function activateNotificationsFromClick(onSuccess) {
     if (!isPushAvailable()) {
-      renderNotificationHelp('unsupported');
+      renderMessage(
+        InSkillRecall.labels.notificationsUnsupported || 'Ce navigateur ne prend pas correctement en charge les notifications.',
+        'warning'
+      );
       return;
     }
 
     if (!InSkillRecall.vapidPublicKey) {
-      renderNotificationHelp('unsupported', 'missing_vapid_public_key');
+      renderMessage('La configuration des notifications du site est incomplète.', 'warning');
       return;
     }
 
-    renderNotificationPending('préparation…');
+    renderPending('préparation…');
 
     ensureServiceWorkerReady()
       .then(function (registration) {
         if (!registration) {
-          renderNotificationHelp('sw_timeout');
+          renderMessage('Le service worker ne répond pas. Rechargez la page puis réessayez.', 'warning');
           throw new Error('service_worker_not_ready');
         }
 
-        renderNotificationPending('autorisation navigateur…');
+        renderPending('autorisation navigateur…');
         return requestNotificationPermission().then(function (permission) {
           if (permission !== 'granted') {
-            renderNotificationHelp(permission);
+            if (permission === 'denied') {
+              renderRoot(renderDeniedScreen());
+            } else {
+              renderMessage('L’autorisation n’a pas été accordée. Cliquez sur “Autoriser” pour continuer.', 'warning');
+            }
             throw new Error('permission_not_granted');
           }
 
-          renderNotificationPending('abonnement de l’appareil…');
+          renderPending('abonnement de l’appareil…');
           return getOrCreateSubscription(registration);
         });
       })
       .then(function (subscription) {
         if (!subscription) {
-          renderNotificationHelp('subscribe_failed', 'no_subscription_object');
+          renderMessage('Impossible d’activer les notifications sur cet appareil.', 'warning');
           throw new Error('subscription_missing');
         }
 
-        renderNotificationPending('enregistrement sur le site…');
+        renderPending('enregistrement sur le site…');
 
         saveSubscription(subscription)
           .done(function (resp) {
             if (resp && resp.success) {
-              $('#inskill-notification-box').remove();
+              if (typeof onSuccess === 'function') {
+                onSuccess(resp);
+              } else {
+                triggerReady();
+              }
             } else {
-              renderNotificationHelp('save_failed', resp);
+              renderMessage('Les notifications ont été autorisées mais l’enregistrement de cet appareil a échoué.', 'warning');
             }
           })
-          .fail(function (err) {
-            renderNotificationHelp('save_failed', err);
+          .fail(function () {
+            renderMessage('Les notifications ont été autorisées mais l’enregistrement de cet appareil a échoué.', 'warning');
           });
       })
       .catch(function (error) {
         const msg = String(error && error.message ? error.message : error || '');
+
         if (
           msg === 'permission_not_granted' ||
           msg === 'subscription_missing' ||
@@ -253,50 +505,23 @@ window.InSkillRecallPush = (function ($, Utils, Api) {
           return;
         }
 
-        renderNotificationHelp('subscribe_failed', error);
+        renderMessage('Impossible d’activer les notifications sur cet appareil.', 'warning');
       });
   }
 
-  function renderNotificationBox() {
-    if (!isPushAvailable()) {
-      return '';
-    }
-
-    if (Notification.permission === 'granted') {
-      return '';
-    }
-
-    let statusHtml = '';
-    let actionsHtml = '';
-
-    if (Notification.permission === 'denied') {
-      statusHtml =
-        '<div class="inskill-notification-message inskill-notification-warning">' +
-          Utils.esc(InSkillRecall.labels.notificationsDenied || 'Les notifications sont bloquées sur cet appareil.') +
-        '</div>';
-    } else {
-      statusHtml =
-        '<p class="inskill-notification-text">' +
-          Utils.esc(InSkillRecall.labels.notificationsPrompt || 'Activez les notifications pour être alerté quand vos questions sont disponibles.') +
-        '</p>';
-
-      actionsHtml =
-        '<button type="button" class="inskill-btn inskill-btn-secondary" id="inskill-enable-notifications">' +
-          Utils.esc(InSkillRecall.labels.enableNotifications || 'Activer les notifications') +
-        '</button>';
-    }
-
-    return (
-      '<div id="inskill-notification-box" class="inskill-notification-box">' +
-        '<div class="inskill-notification-status">' + statusHtml + '</div>' +
-        '<div class="inskill-notification-actions inskill-actions" style="margin-top:12px;">' + actionsHtml + '</div>' +
-      '</div>'
-    );
+  function init($root, onReady) {
+    setAppRoot($root);
+    setReadyCallback(onReady);
+    renderGateScreen();
   }
 
   return {
+    init: init,
     isPushAvailable: isPushAvailable,
-    renderNotificationBox: renderNotificationBox,
+    getPermissionState: getPermissionState,
+    showActivationStep: showActivationStep,
+    renderGateScreen: renderGateScreen,
+    verifyGate: verifyGate,
     activateNotificationsFromClick: activateNotificationsFromClick,
     autoSyncExistingSubscription: autoSyncExistingSubscription
   };

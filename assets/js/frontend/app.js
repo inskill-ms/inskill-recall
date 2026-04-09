@@ -15,10 +15,34 @@
         Session.renderQueue(state, $app, groupId, afterRender);
       });
 
+      $(document).off('click.inskillNotificationsUnderstood', '#inskill-notifications-understood');
+      $(document).on('click.inskillNotificationsUnderstood', '#inskill-notifications-understood', function (e) {
+        e.preventDefault();
+        Push.showActivationStep();
+      });
+
       $(document).off('click.inskillEnableNotifications', '#inskill-enable-notifications');
       $(document).on('click.inskillEnableNotifications', '#inskill-enable-notifications', function (e) {
         e.preventDefault();
-        Push.activateNotificationsFromClick();
+        Push.activateNotificationsFromClick(function () {
+          loadDashboard();
+        });
+      });
+
+      $(document).off('click.inskillVerifyNotifications', '#inskill-verify-notifications');
+      $(document).on('click.inskillVerifyNotifications', '#inskill-verify-notifications', function (e) {
+        e.preventDefault();
+        Push.verifyGate(function (isReady) {
+          if (isReady) {
+            loadDashboard();
+          }
+        });
+      });
+
+      $(document).off('click.inskillRetryNotifications', '#inskill-retry-notifications');
+      $(document).on('click.inskillRetryNotifications', '#inskill-retry-notifications', function (e) {
+        e.preventDefault();
+        Push.renderGateScreen();
       });
 
       Preferences.bindToggle();
@@ -30,11 +54,15 @@
       Push.autoSyncExistingSubscription();
     }
 
-    function load() {
+    function renderLoadError() {
+      $app.html('<div class="inskill-recall-box">Erreur de chargement.</div>');
+    }
+
+    function loadDashboard() {
       Api.getDashboard()
         .done(function (resp) {
           if (!resp || !resp.success) {
-            $app.html('<div class="inskill-recall-box">Erreur de chargement.</div>');
+            renderLoadError();
             return;
           }
 
@@ -43,11 +71,18 @@
           afterRender();
         })
         .fail(function () {
-          $app.html('<div class="inskill-recall-box">Erreur de chargement.</div>');
+          renderLoadError();
         });
     }
 
-    load();
+    function boot() {
+      Push.init($app, function () {
+        loadDashboard();
+      });
+      bindGlobalHandlers();
+    }
+
+    boot();
   }
 
   $(app);

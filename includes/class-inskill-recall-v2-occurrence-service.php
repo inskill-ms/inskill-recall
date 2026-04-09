@@ -111,6 +111,23 @@ class InSkill_Recall_V2_Occurrence_Service {
         ));
     }
 
+    public static function get_pending_occurrences_before_date($group_id, $recall_user_id, $before_date) {
+        global $wpdb;
+
+        return $wpdb->get_results($wpdb->prepare(
+            "SELECT *
+             FROM " . self::get_table() . "
+             WHERE group_id = %d
+               AND recall_user_id = %d
+               AND scheduled_date < %s
+               AND status = 'pending'
+             ORDER BY scheduled_date ASC, scheduled_at ASC, id ASC",
+            (int) $group_id,
+            (int) $recall_user_id,
+            (string) $before_date
+        ));
+    }
+
     public static function get_user_occurrences_until_today($group_id, $recall_user_id, $today = null) {
         global $wpdb;
 

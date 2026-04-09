@@ -470,6 +470,28 @@
   color: #6b7280;
 }
 
+.inskill-gate-box {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.inskill-gate-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inskill-gate-title {
+  margin: 0 0 6px 0;
+}
+
+.inskill-gate-text {
+  margin: 0;
+  color: #374151;
+  line-height: 1.6;
+}
+
 @media (max-width: 640px) {
   .inskill-recall-app {
     margin: 16px auto;

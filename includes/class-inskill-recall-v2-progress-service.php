@@ -45,6 +45,94 @@ class InSkill_Recall_V2_Progress_Service {
         }
     }
 
+    public static function is_weekend_date($date) {
+        try {
+            $dt = new DateTimeImmutable((string) $date, wp_timezone());
+            $dayOfWeek = (int) $dt->format('N');
+            return $dayOfWeek >= 6;
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+
+    public static function get_user_from_calendar_context($user_or_id) {
+        if (is_object($user_or_id)) {
+            return $user_or_id;
+        }
+
+        $user_id = (int) $user_or_id;
+        if ($user_id <= 0 || !class_exists('InSkill_Recall_Auth')) {
+            return null;
+        }
+
+        return InSkill_Recall_Auth::get_user($user_id);
+    }
+
+    public static function user_counts_weekend_days($user_or_id = null) {
+        $user = self::get_user_from_calendar_context($user_or_id);
+        if (!$user || !isset($user->notifications_weekend)) {
+            return true;
+        }
+
+        return !empty($user->notifications_weekend);
+    }
+
+    public static function is_program_active_on_date($user_or_id, $date) {
+        if (self::user_counts_weekend_days($user_or_id)) {
+            return true;
+        }
+
+        return !self::is_weekend_date($date);
+    }
+
+    public static function add_program_days($date, $days, $user_or_id = null) {
+        $days = (int) $days;
+        if ($days === 0) {
+            return (string) $date;
+        }
+
+        if (self::user_counts_weekend_days($user_or_id)) {
+            return self::add_days($date, $days);
+        }
+
+        $step = $days > 0 ? 1 : -1;
+        $remaining = abs($days);
+        $current = (string) $date;
+
+        while ($remaining > 0) {
+            $current = self::add_days($current, $step);
+
+            if (self::is_program_active_on_date($user_or_id, $current)) {
+                $remaining--;
+            }
+        }
+
+        return $current;
+    }
+
+    public static function get_next_program_date($date, $user_or_id = null, $include_current = false) {
+        $current = (string) $date;
+
+        if ($include_current && self::is_program_active_on_date($user_or_id, $current)) {
+            return $current;
+        }
+
+        for ($i = 0; $i < 14; $i++) {
+            $current = self::add_days($current, 1);
+
+            if (self::is_program_active_on_date($user_or_id, $current)) {
+                return $current;
+            }
+        }
+
+        return self::add_days((string) $date, 1);
+    }
+
+    public static function get_pending_closure_date($scheduled_date, $user_or_id = null) {
+        return self::get_next_program_date($scheduled_date, $user_or_id, false);
+    }
+
+
     public static function get_level_rank($level) {
         switch ((string) $level) {
             case self::LEVEL_NV5:
@@ -275,14 +363,14 @@ class InSkill_Recall_V2_Progress_Service {
         )) > 0;
     }
 
-    public static function get_unlock_date_from_first_answer($first_answered_at) {
+    public static function get_unlock_date_from_first_answer($first_answered_at, $user_or_id = null) {
         if (empty($first_answered_at)) {
             return null;
         }
 
         try {
             $dt = new DateTimeImmutable($first_answered_at, wp_timezone());
-            return $dt->modify('+3 days')->format('Y-m-d');
+            return self::add_program_days($dt->format('Y-m-d'), 3, $user_or_id);
         } catch (Exception $e) {
             return null;
         }
@@ -339,7 +427,7 @@ class InSkill_Recall_V2_Progress_Service {
         );
     }
 
-    public static function get_correct_transition($current_level, $answer_date) {
+    public static function get_correct_transition($current_level, $answer_date, $user_or_id = null) {
         $current_level = (string) $current_level;
         $answer_date = (string) $answer_date;
 
@@ -369,11 +457,11 @@ class InSkill_Recall_V2_Progress_Service {
         }
 
         $next_due_date = ($next_level !== self::LEVEL_MASTERED)
-            ? self::compute_next_due_date_after_answer($next_level, $answer_date)
+            ? self::compute_next_due_date_after_answer($next_level, $answer_date, $user_or_id)
             : null;
 
         $downgrade_on_date = ($next_level !== self::LEVEL_MASTERED && $next_due_date)
-            ? self::compute_downgrade_date_for_level($next_level, $next_due_date)
+            ? self::compute_downgrade_date_for_level($next_level, $next_due_date, $user_or_id)
             : null;
 
         return [
@@ -415,10 +503,11 @@ class InSkill_Recall_V2_Progress_Service {
             $data['downgrade_on_date'] = null;
             $data['downgrade_at'] = null;
         } else {
-            $nextDate = self::compute_next_due_date_after_answer($new_level, $today);
+            $calendarUser = self::get_user_from_calendar_context((int) $progress->recall_user_id);
+            $nextDate = self::compute_next_due_date_after_answer($new_level, $today, $calendarUser);
             $data['next_due_date'] = $nextDate;
             $data['next_due_at'] = self::due_datetime_for_date($nextDate);
-            $data['downgrade_on_date'] = self::compute_downgrade_date_for_level($new_level, $nextDate);
+            $data['downgrade_on_date'] = self::compute_downgrade_date_for_level($new_level, $nextDate, $calendarUser);
             $data['downgrade_at'] = $data['downgrade_on_date'] ? self::downgrade_datetime_for_date($data['downgrade_on_date']) : null;
         }
 
@@ -459,7 +548,8 @@ class InSkill_Recall_V2_Progress_Service {
             return false;
         }
 
-        $transition = self::get_correct_transition((string) $progress->current_level, (string) $today);
+        $calendarUser = self::get_user_from_calendar_context((int) $progress->recall_user_id);
+        $transition = self::get_correct_transition((string) $progress->current_level, (string) $today, $calendarUser);
         $awarded_points = 0;
 
         switch ($transition['next_level']) {
@@ -520,8 +610,9 @@ class InSkill_Recall_V2_Progress_Service {
             $newCount = 0;
         }
 
-        $nextDate = self::add_days($today, 1);
-        $downgradeDate = self::compute_downgrade_date_for_level($newLevel, $nextDate);
+        $calendarUser = self::get_user_from_calendar_context((int) $progress->recall_user_id);
+        $nextDate = self::add_program_days($today, 1, $calendarUser);
+        $downgradeDate = self::compute_downgrade_date_for_level($newLevel, $nextDate, $calendarUser);
 
         return false !== $wpdb->update(
             self::get_table(),
@@ -550,9 +641,10 @@ class InSkill_Recall_V2_Progress_Service {
             return false;
         }
 
+        $calendarUser = self::get_user_from_calendar_context((int) $progress->recall_user_id);
         $newLevel = self::compute_midday_downgraded_level($progress->current_level);
         $nextDate = $today;
-        $downgradeDate = self::compute_downgrade_date_for_level($newLevel, $nextDate);
+        $downgradeDate = self::compute_downgrade_date_for_level($newLevel, $nextDate, $calendarUser);
 
         return false !== $wpdb->update(
             self::get_table(),
@@ -570,32 +662,32 @@ class InSkill_Recall_V2_Progress_Service {
         );
     }
 
-    public static function compute_next_due_date_after_answer($new_level, $today) {
+    public static function compute_next_due_date_after_answer($new_level, $today, $user_or_id = null) {
         switch ((string) $new_level) {
             case self::LEVEL_NV1:
-                return self::add_days($today, 3);
+                return self::add_program_days($today, 3, $user_or_id);
             case self::LEVEL_NV2:
-                return self::add_days($today, 4);
+                return self::add_program_days($today, 4, $user_or_id);
             case self::LEVEL_NV3:
-                return self::add_days($today, 6);
+                return self::add_program_days($today, 6, $user_or_id);
             case self::LEVEL_NV4:
-                return self::add_days($today, 8);
+                return self::add_program_days($today, 8, $user_or_id);
             case self::LEVEL_NV5:
-                return self::add_days($today, 10);
+                return self::add_program_days($today, 10, $user_or_id);
             default:
-                return self::add_days($today, 1);
+                return self::add_program_days($today, 1, $user_or_id);
         }
     }
 
-    public static function compute_downgrade_date_for_level($level, $base_date) {
+    public static function compute_downgrade_date_for_level($level, $base_date, $user_or_id = null) {
         switch ((string) $level) {
             case self::LEVEL_NV1:
             case self::LEVEL_NV2:
             case self::LEVEL_NV3:
-                return self::add_days($base_date, 3);
+                return self::add_program_days($base_date, 3, $user_or_id);
             case self::LEVEL_NV4:
             case self::LEVEL_NV5:
-                return self::add_days($base_date, 6);
+                return self::add_program_days($base_date, 6, $user_or_id);
             default:
                 return null;
         }

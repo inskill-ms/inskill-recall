@@ -86,7 +86,7 @@ window.InSkillRecallUtils = (function () {
       case 'unanswered':
         return '⏳';
       default:
-        return '•';
+        return '📝';
     }
   }
 

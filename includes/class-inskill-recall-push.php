@@ -30,6 +30,57 @@ class InSkill_Recall_Push {
             && self::get_vapid_private_key() !== '';
     }
 
+    protected static function sanitize_user_agent($user_agent) {
+        return sanitize_textarea_field((string) $user_agent);
+    }
+
+    protected static function cleanup_duplicate_subscriptions_for_user_device($recall_user_id, $user_agent, $keep_subscription_id, $keep_endpoint_hash) {
+        global $wpdb;
+
+        $recall_user_id = (int) $recall_user_id;
+        $keep_subscription_id = (int) $keep_subscription_id;
+        $keep_endpoint_hash = (string) $keep_endpoint_hash;
+        $user_agent = self::sanitize_user_agent($user_agent);
+
+        if ($recall_user_id <= 0 || $keep_subscription_id <= 0 || $user_agent === '') {
+            return;
+        }
+
+        $duplicates = $wpdb->get_results($wpdb->prepare(
+            "SELECT id, endpoint_hash
+             FROM " . self::subscriptions_table() . "
+             WHERE recall_user_id = %d
+               AND status = 'active'
+               AND user_agent = %s
+               AND id != %d
+             ORDER BY updated_at DESC, id DESC",
+            $recall_user_id,
+            $user_agent,
+            $keep_subscription_id
+        ));
+
+        if (empty($duplicates)) {
+            return;
+        }
+
+        foreach ($duplicates as $duplicate) {
+            if (!empty($duplicate->endpoint_hash) && (string) $duplicate->endpoint_hash === $keep_endpoint_hash) {
+                continue;
+            }
+
+            $wpdb->update(
+                self::subscriptions_table(),
+                [
+                    'status'             => 'inactive',
+                    'last_error_at'      => current_time('mysql'),
+                    'last_error_message' => 'duplicate_subscription_cleaned',
+                    'updated_at'         => current_time('mysql'),
+                ],
+                ['id' => (int) $duplicate->id]
+            );
+        }
+    }
+
     public static function normalize_subscription_payload($subscription) {
         if (is_string($subscription)) {
             $decoded = json_decode($subscription, true);
@@ -83,6 +134,7 @@ class InSkill_Recall_Push {
 
         $endpoint_hash = hash('sha256', $payload['endpoint']);
         $table = self::subscriptions_table();
+        $user_agent = self::sanitize_user_agent($user_agent);
 
         $existing = $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM {$table} WHERE endpoint_hash = %s LIMIT 1",
@@ -95,25 +147,36 @@ class InSkill_Recall_Push {
             'endpoint_hash'     => $endpoint_hash,
             'endpoint'          => $payload['endpoint'],
             'subscription_json' => wp_json_encode($payload),
-            'user_agent'        => $user_agent ? sanitize_textarea_field($user_agent) : null,
+            'user_agent'        => $user_agent !== '' ? $user_agent : null,
             'status'            => 'active',
             'updated_at'        => $now,
         ];
+
+        $saved_subscription_id = 0;
 
         if ($existing) {
             $result = $wpdb->update($table, $data, ['id' => (int) $existing->id]);
             if ($result === false) {
                 return new WP_Error('db_update_failed', 'Impossible de mettre à jour l’abonnement push.');
             }
-            return true;
+            $saved_subscription_id = (int) $existing->id;
+        } else {
+            $data['created_at'] = $now;
+            $result = $wpdb->insert($table, $data);
+
+            if ($result === false) {
+                return new WP_Error('db_insert_failed', 'Impossible d’enregistrer l’abonnement push.');
+            }
+
+            $saved_subscription_id = (int) $wpdb->insert_id;
         }
 
-        $data['created_at'] = $now;
-        $result = $wpdb->insert($table, $data);
-
-        if ($result === false) {
-            return new WP_Error('db_insert_failed', 'Impossible d’enregistrer l’abonnement push.');
-        }
+        self::cleanup_duplicate_subscriptions_for_user_device(
+            $recall_user_id,
+            $user_agent,
+            $saved_subscription_id,
+            $endpoint_hash
+        );
 
         return true;
     }
@@ -122,7 +185,8 @@ class InSkill_Recall_Push {
         global $wpdb;
 
         return $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM " . self::subscriptions_table() . "
+            "SELECT *
+             FROM " . self::subscriptions_table() . "
              WHERE recall_user_id = %d
                AND status = 'active'
              ORDER BY id ASC",

@@ -42,6 +42,32 @@ class InSkill_Recall_V2_Engine {
         ));
     }
 
+    protected static function get_calendar_user($recall_user_id) {
+        if (!class_exists('InSkill_Recall_Auth')) {
+            return null;
+        }
+
+        return InSkill_Recall_Auth::get_user((int) $recall_user_id);
+    }
+
+    protected static function should_prepare_due_occurrence_today($progress, $user, $today) {
+        if (!$progress || empty($progress->next_due_date)) {
+            return false;
+        }
+
+        $nextDueDate = (string) $progress->next_due_date;
+        if ($nextDueDate === $today) {
+            return true;
+        }
+
+        if ($nextDueDate > $today) {
+            return false;
+        }
+
+        return InSkill_Recall_V2_Progress_Service::is_program_active_on_date($user, $today);
+    }
+
+
     public static function prepare_daily_questions_for_user($group_id, $recall_user_id, $today = null) {
         if (!$today) {
             $today = InSkill_Recall_V2_Progress_Service::today_date();
@@ -52,19 +78,32 @@ class InSkill_Recall_V2_Engine {
             return;
         }
 
+        $user = self::get_calendar_user($recall_user_id);
+        if (!$user) {
+            return;
+        }
+
+        $programActiveToday = InSkill_Recall_V2_Progress_Service::is_program_active_on_date($user, $today);
         $due_rows = InSkill_Recall_V2_Progress_Service::get_due_progress_rows($group_id, $recall_user_id, $today);
 
         foreach ($due_rows as $progress) {
+            if (!self::should_prepare_due_occurrence_today($progress, $user, $today)) {
+                continue;
+            }
+
             $occurrence_type = ((string) $progress->next_due_date < $today) ? 'overdue' : 'review';
             InSkill_Recall_V2_Occurrence_Service::ensure_occurrence_exists($progress, $today, $occurrence_type);
         }
 
-        $newAssignments = self::compute_new_question_assignments(
-            $group_id,
-            $recall_user_id,
-            $today,
-            $group->question_order_mode
-        );
+        $newAssignments = $programActiveToday
+            ? self::compute_new_question_assignments(
+                $group_id,
+                $recall_user_id,
+                $today,
+                $group->question_order_mode,
+                $user
+            )
+            : [];
 
         $nextQuestionOrderIndex = InSkill_Recall_V2_Progress_Service::count_progress_rows($group_id, $recall_user_id) + 1;
 
@@ -91,6 +130,7 @@ class InSkill_Recall_V2_Engine {
     }
 
     /**
+
      * Chaînes initiales attendues en J1 : 1 et 2.
      * Si l’une des deux manque, on complète automatiquement.
      */
@@ -120,9 +160,17 @@ class InSkill_Recall_V2_Engine {
      * - si l’état initial est partiel (ex. 1 seule chaîne créée), on complète la/les chaîne(s) manquante(s)
      * - comportement idempotent : plusieurs appels ne doivent pas créer plus de 2 chaînes initiales
      */
-    public static function compute_new_question_assignments($group_id, $recall_user_id, $today = null, $question_order_mode = 'ordered') {
+    public static function compute_new_question_assignments($group_id, $recall_user_id, $today = null, $question_order_mode = 'ordered', $user = null) {
         if (!$today) {
             $today = InSkill_Recall_V2_Progress_Service::today_date();
+        }
+
+        if (!$user) {
+            $user = self::get_calendar_user($recall_user_id);
+        }
+
+        if ($user && !InSkill_Recall_V2_Progress_Service::is_program_active_on_date($user, $today)) {
+            return [];
         }
 
         $assignedCount = InSkill_Recall_V2_Progress_Service::count_progress_rows($group_id, $recall_user_id);
@@ -182,7 +230,7 @@ class InSkill_Recall_V2_Engine {
                 continue;
             }
 
-            $unlockDate = InSkill_Recall_V2_Progress_Service::get_unlock_date_from_first_answer($tip->first_answered_at);
+            $unlockDate = InSkill_Recall_V2_Progress_Service::get_unlock_date_from_first_answer($tip->first_answered_at, $user);
             if (!$unlockDate || $unlockDate > $today) {
                 continue;
             }
@@ -275,9 +323,12 @@ class InSkill_Recall_V2_Engine {
         $isCorrect = self::evaluate_answer((int) $occurrence->question_id, $selected_choice_ids);
 
         if ($isCorrect) {
+            $calendarUser = self::get_calendar_user((int) $progress->recall_user_id);
+
             $transition = InSkill_Recall_V2_Progress_Service::get_correct_transition(
                 $progress->current_level,
-                (string) $occurrence->scheduled_date
+                (string) $occurrence->scheduled_date,
+                $calendarUser
             );
 
             $levelPoints = InSkill_Recall_V2_Scoring_Service::compute_level_points_to_award($progress, $transition['next_level']);
@@ -320,14 +371,28 @@ class InSkill_Recall_V2_Engine {
         ];
     }
 
-    public static function process_unanswered_occurrences_for_day($group_id, $recall_user_id, $date = null) {
+    public static function process_unanswered_occurrences_for_day($group_id, $recall_user_id, $date = null, $today = null) {
         if (!$date) {
             $date = InSkill_Recall_V2_Progress_Service::today_date();
+        }
+
+        if (!$today) {
+            $today = InSkill_Recall_V2_Progress_Service::today_date();
+        }
+
+        $user = self::get_calendar_user($recall_user_id);
+        if (!$user) {
+            return;
         }
 
         $pending = InSkill_Recall_V2_Occurrence_Service::get_pending_occurrences_for_date($group_id, $recall_user_id, $date);
 
         foreach ($pending as $occurrence) {
+            $closureDate = InSkill_Recall_V2_Progress_Service::get_pending_closure_date((string) $occurrence->scheduled_date, $user);
+            if ((string) $today < (string) $closureDate) {
+                continue;
+            }
+
             $progress = InSkill_Recall_V2_Progress_Service::get_progress((int) $occurrence->progress_id);
             if (!$progress) {
                 continue;
@@ -373,14 +438,26 @@ class InSkill_Recall_V2_Engine {
 
     public static function close_pending_occurrences_for_previous_days() {
         $today = InSkill_Recall_V2_Progress_Service::today_date();
-        $yesterday = InSkill_Recall_V2_Progress_Service::add_days($today, -1);
 
         $groups = self::get_active_groups();
         foreach ($groups as $group) {
             $members = self::get_group_members((int) $group->id);
 
             foreach ($members as $member) {
-                self::process_unanswered_occurrences_for_day((int) $group->id, (int) $member->id, $yesterday);
+                $pendingOccurrences = InSkill_Recall_V2_Occurrence_Service::get_pending_occurrences_before_date(
+                    (int) $group->id,
+                    (int) $member->id,
+                    $today
+                );
+
+                foreach ($pendingOccurrences as $occurrence) {
+                    self::process_unanswered_occurrences_for_day(
+                        (int) $group->id,
+                        (int) $member->id,
+                        (string) $occurrence->scheduled_date,
+                        $today
+                    );
+                }
             }
         }
     }
