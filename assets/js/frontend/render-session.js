@@ -361,7 +361,7 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
   function renderUpcoming(groupPayload, upcoming) {
     const rows = Array.isArray(upcoming) ? upcoming : [];
 
-    let html = '<div class="inskill-section"><h3>' + Utils.esc(InSkillRecall.labels.upcomingTitle || 'Prochains rappels') + '</h3>';
+    let html = '<div class="inskill-section"><h3>' + Utils.esc(InSkillRecall.labels.upcomingTitle || 'Prochain(s) rappel(s)') + '</h3>';
 
     if (!rows.length) {
       html += '<p class="inskill-empty-line">Aucun rappel futur.</p></div>';
@@ -373,8 +373,8 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
       const meta = getQuestionMeta(groupPayload, row.question_id);
 
       html += '<div class="inskill-list-row">';
+      html += '<div>' + Utils.esc(formatHistoryDate(row.scheduled_date)) + '</div>';
       html += '<div>Q' + Utils.esc(meta.displayNumber) + ' (' + Utils.esc(row.current_level || '') + ')</div>';
-      html += '<div>' + Utils.esc(row.scheduled_date) + '</div>';
       html += '</div>';
     });
     html += '</div></div>';
