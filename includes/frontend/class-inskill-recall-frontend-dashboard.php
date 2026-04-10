@@ -94,10 +94,12 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
              WHERE o.group_id = %d
                AND o.recall_user_id = %d
                AND o.scheduled_date <= %s
+               AND (o.scheduled_date < %s OR o.status != 'pending')
              ORDER BY o.scheduled_date DESC, o.id DESC
              LIMIT 50",
             (int) $group_id,
             (int) $recall_user_id,
+            $today,
             $today
         ));
     }
