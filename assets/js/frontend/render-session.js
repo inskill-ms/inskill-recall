@@ -42,6 +42,50 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
     }
   }
 
+  function formatHistoryDate(dateStr) {
+    try {
+      if (!dateStr) {
+        return '';
+      }
+
+      const parts = String(dateStr).split('-');
+      if (parts.length !== 3) {
+        return String(dateStr);
+      }
+
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+
+      const date = new Date(year, month, day);
+      if (isNaN(date.getTime())) {
+        return String(dateStr);
+      }
+
+      const weekdays = ['Dim.', 'Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
+      const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+      return [
+        weekdays[date.getDay()],
+        pad2(date.getDate()),
+        months[date.getMonth()],
+        date.getFullYear()
+      ].join(' ');
+    } catch (e) {
+      return String(dateStr || '');
+    }
+  }
+
+  function renderOccurrenceStatus(status) {
+    const icon = Utils.toOccurrenceStatusIcon(status);
+    const label = Utils.toOccurrenceStatusLabel(status);
+
+    return '<span class="inskill-occurrence-status">' +
+      '<span class="inskill-occurrence-status-icon">' + Utils.esc(icon) + '</span> ' +
+      '<span class="inskill-occurrence-status-label">(' + Utils.esc(label) + ')</span>' +
+    '</span>';
+  }
+
   function getClockPayload(state) {
     return state && state.clock ? state.clock : null;
   }
@@ -252,14 +296,14 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
     rows.forEach(function (row) {
       const meta = getQuestionMeta(groupPayload, row.question_id);
 
-      html += '<div class="inskill-list-row">';
-      html += '<div>';
+      html += '<div class="inskill-list-row inskill-list-row-split">';
+      html += '<div class="inskill-list-main">';
       html += '<strong>Q' + Utils.esc(meta.displayNumber) + '</strong> — ' + Utils.esc(row.display_level || '');
       html += '<div class="inskill-list-subtext">';
       html += Utils.esc(meta.questionText || '');
       html += '</div>';
       html += '</div>';
-      html += '<div>' + Utils.esc(Utils.toOccurrenceStatusLabel(row.status)) + '</div>';
+      html += '<div class="inskill-list-side inskill-list-side-status">' + renderOccurrenceStatus(row.status) + '</div>';
       html += '</div>';
     });
     html += '</div></div>';
@@ -268,7 +312,7 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
   }
 
   function renderHistory(groupPayload, history) {
-    const rows = Array.isArray(history) ? history : [];
+    let rows = Array.isArray(history) ? history.slice() : [];
 
     let html = '<div class="inskill-section"><h3>' + Utils.esc(InSkillRecall.labels.calendarTitle || 'Historique') + '</h3>';
 
@@ -277,18 +321,39 @@ window.InSkillRecallSession = (function ($, Utils, Api, Push, Preferences) {
       return html;
     }
 
+    rows.sort(function (a, b) {
+      const dateA = String(a.scheduled_date || '');
+      const dateB = String(b.scheduled_date || '');
+
+      if (dateA < dateB) {
+        return 1;
+      }
+      if (dateA > dateB) {
+        return -1;
+      }
+
+      const idA = Number(a.occurrence_id || a.id || 0);
+      const idB = Number(b.occurrence_id || b.id || 0);
+
+      return idB - idA;
+    });
+
+    html += '<div class="inskill-history-scroll">';
     html += '<div class="inskill-list">';
     rows.forEach(function (row) {
       const meta = getQuestionMeta(groupPayload, row.question_id);
-      const statusIcon = Utils.toOccurrenceStatusIcon(row.status);
-      const statusLabel = Utils.toOccurrenceStatusLabel(row.status);
 
-      html += '<div class="inskill-list-row">';
-      html += '<div>' + Utils.esc(row.scheduled_date) + '</div>';
-      html += '<div>Q' + Utils.esc(meta.displayNumber) + ' ' + Utils.esc(row.display_level || '') + ' : ' + Utils.esc(statusIcon) + ' (' + Utils.esc(statusLabel) + ')</div>';
+      html += '<div class="inskill-list-row inskill-list-row-split">';
+      html += '<div class="inskill-list-main">';
+      html += '<div class="inskill-history-date">' + Utils.esc(formatHistoryDate(row.scheduled_date)) + '</div>';
+      html += '<div class="inskill-history-entry">Q' + Utils.esc(meta.displayNumber) + ' ' + Utils.esc(row.display_level || '') + '</div>';
+      html += '</div>';
+      html += '<div class="inskill-list-side inskill-list-side-status">' + renderOccurrenceStatus(row.status) + '</div>';
       html += '</div>';
     });
-    html += '</div></div>';
+    html += '</div>';
+    html += '</div>';
+    html += '</div>';
 
     return html;
   }

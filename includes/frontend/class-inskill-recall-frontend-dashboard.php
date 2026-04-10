@@ -207,10 +207,7 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
 
         $stats = $this->get_stats_for_group((int) $group->id, (int) $user->id);
 
-        // Queue = uniquement les questions encore à faire aujourd’hui
         $queue = InSkill_Recall_V2_Occurrence_Service::get_today_front_queue((int) $group->id, (int) $user->id, $today);
-
-        // Toutes les occurrences du jour = pour le résumé du jour
         $todayRows = InSkill_Recall_V2_Occurrence_Service::get_all_today_occurrences((int) $group->id, (int) $user->id, $today);
 
         $history = $this->get_frontend_history((int) $group->id, (int) $user->id, $today);
@@ -239,7 +236,7 @@ class InSkill_Recall_Frontend_Dashboard extends InSkill_Recall_Frontend_Core {
         } elseif ($todayRemaining <= 0) {
             $message = 'Aucune question n’est prévue aujourd’hui.';
         } else {
-            $message = 'Vous pouvez avancer à votre rythme.';
+            $message = 'Répondez sans attendre pour gagnez des bonus de progression (et éviter les pénalités de retard).';
         }
 
         $actionLabel = 'Démarrer';

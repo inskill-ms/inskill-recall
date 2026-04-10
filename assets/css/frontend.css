@@ -401,6 +401,61 @@
   background: #fff;
 }
 
+.inskill-list-row-split {
+  align-items: center;
+}
+
+.inskill-list-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inskill-list-side {
+  flex: 0 0 auto;
+}
+
+.inskill-list-side-status {
+  min-width: 150px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.inskill-list-subtext {
+  margin-top: 6px;
+  color: #4b5563;
+  line-height: 1.45;
+}
+
+.inskill-occurrence-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.inskill-occurrence-status-icon,
+.inskill-occurrence-status-label {
+  display: inline-block;
+}
+
+.inskill-history-date {
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.inskill-history-entry {
+  color: #374151;
+  line-height: 1.45;
+}
+
+.inskill-history-scroll {
+  max-height: 612px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .inskill-empty-line {
   color: #6b7280;
   margin: 0;
@@ -537,5 +592,14 @@
 
   .inskill-recall-clock-footer {
     font-size: 13px;
+  }
+
+  .inskill-list-side-status {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .inskill-history-scroll {
+    max-height: none;
   }
 }
