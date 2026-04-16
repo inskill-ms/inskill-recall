@@ -231,16 +231,12 @@ class InSkill_Recall_Auth {
 
     public static function get_notification_preferences($user) {
         $hour = isset($user->notification_hour) ? (int) $user->notification_hour : self::DEFAULT_NOTIFICATION_HOUR;
-        $minute = isset($user->notification_minute) ? (int) $user->notification_minute : self::DEFAULT_NOTIFICATION_MINUTE;
+        $minute = 0;
         $allow_weekend = isset($user->notifications_weekend) ? (int) $user->notifications_weekend : self::DEFAULT_NOTIFICATIONS_WEEKEND;
         $timezone = isset($user->notification_timezone) ? (string) $user->notification_timezone : self::DEFAULT_NOTIFICATION_TIMEZONE;
 
         if ($hour < 0 || $hour > 23) {
             $hour = self::DEFAULT_NOTIFICATION_HOUR;
-        }
-
-        if ($minute < 0 || $minute > 59) {
-            $minute = self::DEFAULT_NOTIFICATION_MINUTE;
         }
 
         $allow_weekend = $allow_weekend ? 1 : 0;
@@ -253,10 +249,10 @@ class InSkill_Recall_Auth {
             'timezone_label'         => self::get_timezone_label($timezone),
             'timezone_options'       => self::get_timezone_options_payload(),
             'allow_weekend'          => $allow_weekend,
-            'time_label'             => sprintf('%02d:%02d', $hour, $minute),
+            'time_label'             => sprintf('%02d:00', $hour),
             'weekend_label'          => $allow_weekend ? 'Oui' : 'Non',
             'default_hour'           => self::DEFAULT_NOTIFICATION_HOUR,
-            'default_minute'         => self::DEFAULT_NOTIFICATION_MINUTE,
+            'default_minute'         => 0,
             'default_timezone'       => self::DEFAULT_NOTIFICATION_TIMEZONE,
             'default_timezone_label' => self::get_timezone_label(self::DEFAULT_NOTIFICATION_TIMEZONE),
             'default_allow_weekend'  => self::DEFAULT_NOTIFICATIONS_WEEKEND,
@@ -267,15 +263,11 @@ class InSkill_Recall_Auth {
         global $wpdb;
 
         $hour = (int) $hour;
-        $minute = (int) $minute;
+        $minute = 0;
         $allow_weekend = $allow_weekend ? 1 : 0;
         $timezone = self::get_valid_timezone_identifier($timezone);
 
         if ($hour < 0 || $hour > 23) {
-            return false;
-        }
-
-        if ($minute < 0 || $minute > 59) {
             return false;
         }
 
@@ -328,15 +320,15 @@ class InSkill_Recall_Auth {
         }
 
         for ($i = 0; $i < 14; $i++) {
-            $candidate = $dt->setTime((int) $prefs['hour'], (int) $prefs['minute'], 0);
+            $candidate = $dt->setTime((int) $prefs['hour'], 0, 0);
 
             if ($candidate->getTimestamp() < (int) $not_before_timestamp) {
-                $candidate = $candidate->modify('+1 day')->setTime((int) $prefs['hour'], (int) $prefs['minute'], 0);
+                $candidate = $candidate->modify('+1 day')->setTime((int) $prefs['hour'], 0, 0);
             }
 
             $day_of_week = (int) $candidate->format('N');
             if (!$prefs['allow_weekend'] && $day_of_week >= 6) {
-                $dt = $candidate->modify('+1 day')->setTime((int) $prefs['hour'], (int) $prefs['minute'], 0);
+                $dt = $candidate->modify('+1 day')->setTime((int) $prefs['hour'], 0, 0);
                 continue;
             }
 

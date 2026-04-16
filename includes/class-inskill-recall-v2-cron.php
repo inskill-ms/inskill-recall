@@ -12,16 +12,67 @@ class InSkill_Recall_V2_Cron {
 
     public function __construct() {
         add_action(self::EVENT_HOOK, [__CLASS__, 'run']);
+        add_action('init', [__CLASS__, 'maybe_realign_schedule'], 20);
     }
 
     public static function activate() {
-        if (!wp_next_scheduled(self::EVENT_HOOK)) {
-            wp_schedule_event(time() + 300, 'hourly', self::EVENT_HOOK);
-        }
+        self::schedule_at_top_of_hour(true);
     }
 
     public static function deactivate() {
         wp_clear_scheduled_hook(self::EVENT_HOOK);
+    }
+
+    public static function maybe_realign_schedule() {
+        $next = wp_next_scheduled(self::EVENT_HOOK);
+
+        if (!$next) {
+            self::schedule_at_top_of_hour(true);
+            return;
+        }
+
+        try {
+            $wpTz = wp_timezone();
+            $dt = (new DateTimeImmutable('@' . (int) $next))->setTimezone($wpTz);
+            $minute = (int) $dt->format('i');
+            $second = (int) $dt->format('s');
+
+            if ($minute !== 0 || $second !== 0) {
+                self::schedule_at_top_of_hour(true);
+            }
+        } catch (Exception $e) {
+            self::schedule_at_top_of_hour(true);
+        }
+    }
+
+    protected static function schedule_at_top_of_hour($force_reschedule = false) {
+        if ($force_reschedule) {
+            wp_clear_scheduled_hook(self::EVENT_HOOK);
+        } elseif (wp_next_scheduled(self::EVENT_HOOK)) {
+            return;
+        }
+
+        $timestamp = self::get_next_top_of_hour_timestamp();
+        wp_schedule_event($timestamp, 'hourly', self::EVENT_HOOK);
+    }
+
+    protected static function get_next_top_of_hour_timestamp() {
+        try {
+            $now = current_datetime();
+            $next = $now->setTime((int) $now->format('H'), 0, 0);
+
+            if ((int) $now->format('i') !== 0 || (int) $now->format('s') !== 0) {
+                $next = $next->modify('+1 hour');
+            } else {
+                $next = $next->modify('+1 hour');
+            }
+
+            return $next->getTimestamp();
+        } catch (Exception $e) {
+            $fallback = time();
+            $remainder = $fallback % HOUR_IN_SECONDS;
+            return $fallback + (HOUR_IN_SECONDS - $remainder);
+        }
     }
 
     public static function run() {
@@ -221,6 +272,7 @@ class InSkill_Recall_V2_Cron {
             }
 
             $targetDate = self::get_next_program_alert_date_for_user($user, $today);
+
             if ((string) $row->downgrade_on_date !== (string) $targetDate) {
                 continue;
             }
@@ -251,16 +303,16 @@ class InSkill_Recall_V2_Cron {
         $wpdb->insert(
             InSkill_Recall_DB::table('notification_logs'),
             [
-                'recall_user_id'    => (int) $recall_user_id,
-                'group_id'          => $group_id ? (int) $group_id : null,
-                'notification_type' => (string) $type,
-                'title'             => isset($payload['title']) ? (string) $payload['title'] : 'InSkill Recall',
-                'body'              => isset($payload['body']) ? (string) $payload['body'] : '',
-                'payload_json'      => wp_json_encode($payload),
-                'sent_at'           => InSkill_Recall_Time::now_mysql(),
-                'status'            => (string) $status,
-                'error_message'     => $error_message,
-                'created_at'        => InSkill_Recall_Time::now_mysql(),
+                'recall_user_id'   => (int) $recall_user_id,
+                'group_id'         => $group_id ? (int) $group_id : null,
+                'notification_type'=> sanitize_key($type),
+                'title'            => isset($payload['title']) ? sanitize_text_field((string) $payload['title']) : '',
+                'body'             => isset($payload['body']) ? sanitize_textarea_field((string) $payload['body']) : '',
+                'payload_json'     => wp_json_encode($payload),
+                'sent_at'          => current_time('mysql'),
+                'status'           => $status === 'error' ? 'error' : 'sent',
+                'error_message'    => $error_message ? sanitize_textarea_field((string) $error_message) : null,
+                'created_at'       => current_time('mysql'),
             ]
         );
     }

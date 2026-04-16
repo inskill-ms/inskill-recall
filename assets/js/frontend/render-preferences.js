@@ -8,11 +8,12 @@ window.InSkillRecallPreferences = (function ($, Utils, Api) {
       : (InSkillRecall.labels.preferencesSummaryWeekdays || 'du lundi au vendredi');
 
     const timezoneLabel = prefs.timezone_label || prefs.timezone || '';
+    const hourLabel = String(prefs.hour).padStart(2, '0') + ':00';
 
     return (
       '<p class="inskill-settings-summary">' +
         '<strong>' + Utils.esc(InSkillRecall.labels.preferencesSummaryPrefix || 'Réglage actuel :') + '</strong> ' +
-        Utils.esc(prefs.time_label + ' — ' + timezoneLabel + ', ' + daysLabel) +
+        Utils.esc(hourLabel + ' — ' + timezoneLabel + ', ' + daysLabel) +
       '</p>'
     );
   }
@@ -31,7 +32,6 @@ window.InSkillRecallPreferences = (function ($, Utils, Api) {
     };
 
     const hourOptions = [];
-    const minuteOptions = [];
     const timezoneOptions = Array.isArray(prefs.timezone_options) && prefs.timezone_options.length
       ? prefs.timezone_options
       : [{ value: 'Africa/Casablanca', label: 'Maroc - Casablanca' }];
@@ -40,13 +40,6 @@ window.InSkillRecallPreferences = (function ($, Utils, Api) {
       const value = String(h).padStart(2, '0');
       hourOptions.push(
         '<option value="' + h + '"' + (h === Number(prefs.hour) ? ' selected' : '') + '>' + value + '</option>'
-      );
-    }
-
-    for (let m = 0; m <= 59; m++) {
-      const value = String(m).padStart(2, '0');
-      minuteOptions.push(
-        '<option value="' + m + '"' + (m === Number(prefs.minute) ? ' selected' : '') + '>' + value + '</option>'
       );
     }
 
@@ -77,8 +70,7 @@ window.InSkillRecallPreferences = (function ($, Utils, Api) {
       '<label class="inskill-settings-label" for="inskill-notification-hour">' + Utils.esc(InSkillRecall.labels.preferencesHour || 'Heure souhaitée') + '</label>',
       '<div class="inskill-time-selects">',
       '<select id="inskill-notification-hour" name="notification_hour">' + hourOptions.join('') + '</select>',
-      '<span class="inskill-time-separator">:</span>',
-      '<select id="inskill-notification-minute" name="notification_minute">' + minuteOptions.join('') + '</select>',
+      '<span class="inskill-time-separator">:00</span>',
       '</div>',
       '</div>',
       '<div class="inskill-settings-row">',
@@ -118,7 +110,7 @@ window.InSkillRecallPreferences = (function ($, Utils, Api) {
   function savePreferences(state, onSaved) {
     const $button = $('#inskill-save-preferences');
     const hour = parseInt($('#inskill-notification-hour').val(), 10);
-    const minute = parseInt($('#inskill-notification-minute').val(), 10);
+    const minute = 0;
     const timezone = $('#inskill-notification-timezone').val() || '';
     const allowWeekend = $('#inskill-notifications-weekend').is(':checked') ? 1 : 0;
 

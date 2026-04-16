@@ -238,7 +238,7 @@ class InSkill_Recall_Push {
         );
     }
 
-    public static function send_to_user($recall_user_id, array $payload) {
+    protected static function send_payload_to_user($recall_user_id, array $payload, $mark_notified = true) {
         $subscriptions = self::get_active_subscriptions_for_user($recall_user_id);
         if (empty($subscriptions)) {
             return false;
@@ -268,6 +268,7 @@ class InSkill_Recall_Push {
         }
 
         $queued = 0;
+
         foreach ($subscriptions as $subscription) {
             $subscriptionPayload = json_decode((string) $subscription->subscription_json, true);
             if (!is_array($subscriptionPayload)) {
@@ -322,10 +323,18 @@ class InSkill_Recall_Push {
             }
         }
 
-        if ($success) {
+        if ($success && $mark_notified) {
             self::mark_user_notified((int) $recall_user_id);
         }
 
         return $success;
+    }
+
+    public static function send_to_user($recall_user_id, array $payload) {
+        return self::send_payload_to_user((int) $recall_user_id, $payload, true);
+    }
+
+    public static function send_test_to_user($recall_user_id, array $payload) {
+        return self::send_payload_to_user((int) $recall_user_id, $payload, false);
     }
 }
