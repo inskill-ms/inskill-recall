@@ -51,6 +51,9 @@ class InSkill_Recall_Admin_Page_Notifications {
             'notifications_saved'           => 'Réglages notifications enregistrés.',
             'notification_logs_cleared'     => 'Historique des notifications vidé avec succès.',
             'notification_logs_clear_error' => 'Impossible de vider l’historique des notifications.',
+            'test_push_sent'                => 'Notification push de test envoyée avec succès.',
+            'test_push_error'               => 'Aucune notification de test n’a pu être envoyée. Vérifiez les abonnements push actifs, la configuration VAPID et l’état des appareils de cet utilisateur.',
+            'test_push_invalid_user'        => 'Utilisateur cible invalide pour le test push.',
         ];
 
         if (!isset($map[$message])) {
@@ -58,7 +61,7 @@ class InSkill_Recall_Admin_Page_Notifications {
         }
 
         $class = 'notice notice-success is-dismissible';
-        if (in_array($message, ['notification_logs_clear_error'], true)) {
+        if (in_array($message, ['notification_logs_clear_error', 'test_push_error', 'test_push_invalid_user'], true)) {
             $class = 'notice notice-error is-dismissible';
         }
 
@@ -69,6 +72,7 @@ class InSkill_Recall_Admin_Page_Notifications {
         $summary = $this->repository->get_notification_summary();
         $logs = $this->repository->get_notification_logs(100);
         $subscriptions = $this->get_recent_active_push_subscriptions(100);
+        $users = $this->repository->get_users();
 
         $allowed_timezones = (string) get_option(
             'inskill_recall_allowed_timezones',
@@ -78,6 +82,11 @@ class InSkill_Recall_Admin_Page_Notifications {
         $vapid_subject = (string) get_option('inskill_recall_vapid_subject', 'mailto:contact@example.com');
         $vapid_public_key = (string) get_option('inskill_recall_vapid_public_key', '');
         $vapid_private_key = (string) get_option('inskill_recall_vapid_private_key', '');
+
+        $selected_test_user_id = isset($_GET['test_push_user_id']) ? (int) $_GET['test_push_user_id'] : 0;
+        if ($selected_test_user_id <= 0 && !empty($users)) {
+            $selected_test_user_id = (int) $users[0]->id;
+        }
         ?>
         <div class="wrap">
             <h1>InSkill Recall — Notifications</h1>
@@ -128,6 +137,48 @@ class InSkill_Recall_Admin_Page_Notifications {
                             <li>Notifications journalisées : <?php echo esc_html($summary['logs_total']); ?></li>
                             <li>Notifications envoyées avec succès : <?php echo esc_html($summary['logs_sent']); ?></li>
                         </ul>
+                    </div>
+
+                    <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;margin-bottom:24px;">
+                        <h2 style="margin-top:0;">Test push admin</h2>
+                        <p style="margin:8px 0 16px 0;color:#646970;">
+                            Ce test envoie une notification push de vérification à l’utilisateur sélectionné sans impacter la logique métier quotidienne.
+                        </p>
+
+                        <form method="post" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+                            <?php wp_nonce_field('inskill_recall_admin_action'); ?>
+                            <input type="hidden" name="inskill_recall_action" value="send_test_push_notification">
+
+                            <div>
+                                <label for="test_push_user_id" style="display:block;font-weight:600;margin-bottom:6px;">Utilisateur cible</label>
+                                <select name="test_push_user_id" id="test_push_user_id" style="min-width:320px;">
+                                    <?php if (empty($users)) : ?>
+                                        <option value="0">Aucun utilisateur disponible</option>
+                                    <?php else : ?>
+                                        <?php foreach ($users as $user) : ?>
+                                            <option value="<?php echo esc_attr($user->id); ?>" <?php selected((int) $selected_test_user_id, (int) $user->id); ?>>
+                                                <?php
+                                                echo esc_html(
+                                                    sprintf(
+                                                        '#%d — %s — %s',
+                                                        (int) $user->id,
+                                                        $this->get_user_label($user),
+                                                        !empty($user->email) ? (string) $user->email : 'sans email'
+                                                    )
+                                                );
+                                                ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </select>
+                            </div>
+
+                            <div>
+                                <button type="submit" class="button button-primary" <?php disabled(empty($users)); ?>>
+                                    Envoyer un test push
+                                </button>
+                            </div>
+                        </form>
                     </div>
 
                     <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;margin-bottom:24px;">

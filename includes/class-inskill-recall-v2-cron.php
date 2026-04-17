@@ -115,9 +115,9 @@ class InSkill_Recall_V2_Cron {
             return $now->setTimezone($tz);
         } catch (Exception $e) {
             self::debug_log('cron_user_local_now_exception', [
-                'user_id'   => isset($user->id) ? (int) $user->id : 0,
-                'timezone'  => $timezone,
-                'message'   => $e->getMessage(),
+                'user_id'  => isset($user->id) ? (int) $user->id : 0,
+                'timezone' => $timezone,
+                'message'  => $e->getMessage(),
             ]);
 
             return null;
@@ -127,7 +127,7 @@ class InSkill_Recall_V2_Cron {
     protected static function get_daily_notification_decision($user) {
         if (!$user) {
             return [
-                'ok' => false,
+                'ok'     => false,
                 'reason' => 'missing_user',
             ];
         }
@@ -137,9 +137,9 @@ class InSkill_Recall_V2_Cron {
 
         if (!$now) {
             return [
-                'ok' => false,
+                'ok'     => false,
                 'reason' => 'invalid_timezone_or_now',
-                'prefs' => $prefs,
+                'prefs'  => $prefs,
             ];
         }
 
@@ -148,19 +148,19 @@ class InSkill_Recall_V2_Cron {
         $targetMinutes = ((int) $prefs['hour']) * 60 + ((int) $prefs['minute']);
 
         $result = [
-            'ok'                 => true,
-            'reason'             => 'ok',
-            'prefs'              => $prefs,
-            'local_now'          => $now->format('Y-m-d H:i:s'),
-            'local_date'         => $now->format('Y-m-d'),
-            'local_time'         => $now->format('H:i:s'),
-            'day_of_week'        => $dayOfWeek,
-            'now_minutes'        => $nowMinutes,
-            'target_minutes'     => $targetMinutes,
-            'last_notified_at'   => !empty($user->last_notified_at) ? (string) $user->last_notified_at : null,
-            'forced_datetime'    => InSkill_Recall_Time::get_forced_datetime(),
-            'wp_now'             => InSkill_Recall_Time::now_mysql(),
-            'wp_today'           => InSkill_Recall_V2_Progress_Service::today_date(),
+            'ok'               => true,
+            'reason'           => 'ok',
+            'prefs'            => $prefs,
+            'local_now'        => $now->format('Y-m-d H:i:s'),
+            'local_date'       => $now->format('Y-m-d'),
+            'local_time'       => $now->format('H:i:s'),
+            'day_of_week'      => $dayOfWeek,
+            'now_minutes'      => $nowMinutes,
+            'target_minutes'   => $targetMinutes,
+            'last_notified_at' => !empty($user->last_notified_at) ? (string) $user->last_notified_at : null,
+            'forced_datetime'  => InSkill_Recall_Time::get_forced_datetime(),
+            'wp_now'           => InSkill_Recall_Time::now_mysql(),
+            'wp_today'         => InSkill_Recall_V2_Progress_Service::today_date(),
         ];
 
         if (empty($prefs['allow_weekend']) && $dayOfWeek >= 6) {
@@ -231,8 +231,8 @@ class InSkill_Recall_V2_Cron {
 
         self::debug_log('cron_run_start', [
             'forced_datetime' => InSkill_Recall_Time::get_forced_datetime(),
-            'wp_now' => InSkill_Recall_Time::now_mysql(),
-            'wp_today' => InSkill_Recall_V2_Progress_Service::today_date(),
+            'wp_now'          => InSkill_Recall_Time::now_mysql(),
+            'wp_today'        => InSkill_Recall_V2_Progress_Service::today_date(),
         ]);
 
         try {
@@ -264,7 +264,7 @@ class InSkill_Recall_V2_Cron {
 
         if ($alreadyRun === $today) {
             self::debug_log('cron_daily_prepare_skipped', [
-                'today' => $today,
+                'today'       => $today,
                 'already_run' => $alreadyRun,
             ]);
             return;
@@ -293,7 +293,7 @@ class InSkill_Recall_V2_Cron {
 
         if ($currentHourMinute < '12:00') {
             self::debug_log('cron_midday_skipped_before_noon', [
-                'today' => $today,
+                'today'               => $today,
                 'current_hour_minute' => $currentHourMinute,
             ]);
             return;
@@ -301,14 +301,14 @@ class InSkill_Recall_V2_Cron {
 
         if ($alreadyRun === $today) {
             self::debug_log('cron_midday_skipped_already_run', [
-                'today' => $today,
+                'today'       => $today,
                 'already_run' => $alreadyRun,
             ]);
             return;
         }
 
         self::debug_log('cron_midday_start', [
-            'today' => $today,
+            'today'               => $today,
             'current_hour_minute' => $currentHourMinute,
         ]);
 
@@ -356,7 +356,7 @@ class InSkill_Recall_V2_Cron {
         $groups = InSkill_Recall_V2_Engine::get_active_groups();
 
         self::debug_log('cron_daily_notifications_start', [
-            'today' => $today,
+            'today'        => $today,
             'groups_count' => is_array($groups) ? count($groups) : 0,
         ]);
 
@@ -364,8 +364,8 @@ class InSkill_Recall_V2_Cron {
             $members = InSkill_Recall_V2_Engine::get_group_members((int) $group->id);
 
             self::debug_log('cron_daily_notifications_group', [
-                'group_id' => (int) $group->id,
-                'group_name' => isset($group->name) ? (string) $group->name : '',
+                'group_id'      => (int) $group->id,
+                'group_name'    => isset($group->name) ? (string) $group->name : '',
                 'members_count' => is_array($members) ? count($members) : 0,
             ]);
 
@@ -373,7 +373,7 @@ class InSkill_Recall_V2_Cron {
                 $user = InSkill_Recall_Auth::get_user((int) $member->id);
                 if (!$user) {
                     self::debug_log('cron_daily_notifications_member_skipped_missing_user', [
-                        'group_id' => (int) $group->id,
+                        'group_id'  => (int) $group->id,
                         'member_id' => isset($member->id) ? (int) $member->id : 0,
                     ]);
                     continue;
@@ -394,19 +394,19 @@ class InSkill_Recall_V2_Cron {
                 $decision = self::get_daily_notification_decision($user);
 
                 self::debug_log('cron_daily_notifications_member_check', [
-                    'group_id' => (int) $group->id,
-                    'group_name' => isset($group->name) ? (string) $group->name : '',
-                    'user_id' => (int) $member->id,
-                    'user_email' => !empty($user->email) ? (string) $user->email : '',
+                    'group_id'          => (int) $group->id,
+                    'group_name'        => isset($group->name) ? (string) $group->name : '',
+                    'user_id'           => (int) $member->id,
+                    'user_email'        => !empty($user->email) ? (string) $user->email : '',
                     'has_pending_today' => $hasPendingToday,
-                    'decision' => $decision,
+                    'decision'          => $decision,
                 ]);
 
                 if ($hasPendingToday <= 0) {
                     self::debug_log('cron_daily_notifications_member_skipped', [
                         'group_id' => (int) $group->id,
-                        'user_id' => (int) $member->id,
-                        'reason' => 'no_pending_today',
+                        'user_id'  => (int) $member->id,
+                        'reason'   => 'no_pending_today',
                     ]);
                     continue;
                 }
@@ -414,8 +414,8 @@ class InSkill_Recall_V2_Cron {
                 if (empty($decision['ok'])) {
                     self::debug_log('cron_daily_notifications_member_skipped', [
                         'group_id' => (int) $group->id,
-                        'user_id' => (int) $member->id,
-                        'reason' => isset($decision['reason']) ? (string) $decision['reason'] : 'unknown',
+                        'user_id'  => (int) $member->id,
+                        'reason'   => isset($decision['reason']) ? (string) $decision['reason'] : 'unknown',
                         'decision' => $decision,
                     ]);
                     continue;
@@ -432,9 +432,9 @@ class InSkill_Recall_V2_Cron {
 
                 self::debug_log('cron_daily_notifications_member_send', [
                     'group_id' => (int) $group->id,
-                    'user_id' => (int) $member->id,
-                    'sent' => (bool) $sent,
-                    'payload' => $payload,
+                    'user_id'  => (int) $member->id,
+                    'sent'     => (bool) $sent,
+                    'payload'  => $payload,
                 ]);
 
                 self::log_notification(
@@ -474,7 +474,7 @@ class InSkill_Recall_V2_Cron {
         );
 
         self::debug_log('cron_downgrade_notifications_start', [
-            'today' => $today,
+            'today'      => $today,
             'rows_count' => is_array($rows) ? count($rows) : 0,
         ]);
 
@@ -483,7 +483,7 @@ class InSkill_Recall_V2_Cron {
             if (!$user) {
                 self::debug_log('cron_downgrade_notifications_row_skipped_missing_user', [
                     'group_id' => (int) $row->group_id,
-                    'user_id' => (int) $row->recall_user_id,
+                    'user_id'  => (int) $row->recall_user_id,
                 ]);
                 continue;
             }
@@ -492,11 +492,11 @@ class InSkill_Recall_V2_Cron {
 
             if ((string) $row->downgrade_on_date !== (string) $targetDate) {
                 self::debug_log('cron_downgrade_notifications_row_skipped', [
-                    'group_id' => (int) $row->group_id,
-                    'user_id' => (int) $row->recall_user_id,
+                    'group_id'          => (int) $row->group_id,
+                    'user_id'           => (int) $row->recall_user_id,
                     'downgrade_on_date' => (string) $row->downgrade_on_date,
-                    'target_date' => (string) $targetDate,
-                    'reason' => 'target_date_mismatch',
+                    'target_date'       => (string) $targetDate,
+                    'reason'            => 'target_date_mismatch',
                 ]);
                 continue;
             }
@@ -512,9 +512,9 @@ class InSkill_Recall_V2_Cron {
 
             self::debug_log('cron_downgrade_notifications_row_send', [
                 'group_id' => (int) $row->group_id,
-                'user_id' => (int) $row->recall_user_id,
-                'sent' => (bool) $sent,
-                'payload' => $payload,
+                'user_id'  => (int) $row->recall_user_id,
+                'sent'     => (bool) $sent,
+                'payload'  => $payload,
             ]);
 
             self::log_notification(

@@ -25,7 +25,6 @@ class InSkill_Recall_Admin {
 
         add_action('admin_menu', [$this, 'register_menu']);
         add_action('admin_init', [$this, 'handle_actions']);
-        add_action('admin_menu', [$this, 'add_test_push_page']);
     }
 
     public function register_menu() {
@@ -47,17 +46,6 @@ class InSkill_Recall_Admin {
         add_submenu_page('inskill-recall', 'Statistiques', 'Statistiques', 'manage_options', 'inskill-recall-stats', [$this->page_stats, 'render']);
     }
 
-    public function add_test_push_page() {
-        add_submenu_page(
-            null,
-            'Test Push',
-            'Test Push',
-            'manage_options',
-            'inskill-test-push',
-            [$this, 'render_test_push_page']
-        );
-    }
-
     public function handle_actions() {
         if (!current_user_can('manage_options') || empty($_POST['inskill_recall_action'])) {
             return;
@@ -67,52 +55,5 @@ class InSkill_Recall_Admin {
 
         $action = sanitize_text_field(wp_unslash($_POST['inskill_recall_action']));
         $this->actions->dispatch($action);
-    }
-
-    public function render_test_push_page() {
-        if (!current_user_can('manage_options')) {
-            wp_die('Accès refusé.');
-        }
-
-        $sent = null;
-        $error_message = '';
-        $target_user_id = isset($_GET['recall_user_id']) ? (int) $_GET['recall_user_id'] : 2;
-
-        if (isset($_GET['send_test'])) {
-            check_admin_referer('inskill_test_push_send');
-
-            $payload = [
-                'title' => 'TEST PUSH',
-                'body'  => 'Si vous voyez cette notification, le push fonctionne.',
-                'url'   => home_url('/'),
-                'tag'   => 'inskill-recall-manual-test-' . $target_user_id,
-            ];
-
-            $sent = InSkill_Recall_Push::send_test_to_user($target_user_id, $payload);
-
-            if (!$sent) {
-                $error_message = 'Aucune notification envoyée. Vérifiez les abonnements push actifs, la configuration VAPID et l’état des subscriptions de cet utilisateur.';
-            }
-        }
-
-        $test_url = wp_nonce_url(
-            admin_url('admin.php?page=inskill-test-push&send_test=1&recall_user_id=' . $target_user_id),
-            'inskill_test_push_send'
-        );
-
-        echo '<div class="wrap">';
-        echo '<h1>Test Push</h1>';
-        echo '<p>Cette page permet d’envoyer manuellement une notification push de test à un utilisateur InSkill Recall.</p>';
-        echo '<p><strong>Utilisateur ciblé :</strong> ID ' . esc_html((string) $target_user_id) . '</p>';
-
-        if ($sent === true) {
-            echo '<div class="notice notice-success"><p>Push envoyé avec succès.</p></div>';
-        } elseif ($sent === false && isset($_GET['send_test'])) {
-            echo '<div class="notice notice-error"><p>' . esc_html($error_message) . '</p></div>';
-        }
-
-        echo '<p><a href="' . esc_url($test_url) . '" class="button button-primary">Envoyer test push</a></p>';
-        echo '<p><a href="' . esc_url(admin_url('admin.php?page=inskill-recall-notifications')) . '" class="button">Retour aux notifications</a></p>';
-        echo '</div>';
     }
 }

@@ -57,6 +57,9 @@ class InSkill_Recall_Admin_Actions {
             case 'clear_notification_logs':
                 $this->clear_notification_logs();
                 break;
+            case 'send_test_push_notification':
+                $this->send_test_push_notification();
+                break;
         }
     }
 
@@ -90,10 +93,6 @@ class InSkill_Recall_Admin_Actions {
 
     private function run_test_engine_now() {
         try {
-            // Ordre logique d’un run manuel de test :
-            // 1) clôturer les pending des jours précédents
-            // 2) appliquer les rétrogradations de midi si la date simulée les déclenche
-            // 3) préparer les occurrences dues pour "aujourd’hui"
             InSkill_Recall_V2_Engine::close_pending_occurrences_for_previous_days();
             InSkill_Recall_V2_Engine::run_midday_downgrades();
             InSkill_Recall_V2_Engine::prepare_all_due_occurrences_for_today();
@@ -109,14 +108,14 @@ class InSkill_Recall_Admin_Actions {
         $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
 
         $data = [
-            'email' => isset($_POST['email']) ? wp_unslash($_POST['email']) : '',
-            'first_name' => isset($_POST['first_name']) ? wp_unslash($_POST['first_name']) : '',
-            'last_name' => isset($_POST['last_name']) ? wp_unslash($_POST['last_name']) : '',
-            'status' => isset($_POST['status']) ? wp_unslash($_POST['status']) : 'active',
-            'notification_hour' => isset($_POST['notification_hour']) ? (int) $_POST['notification_hour'] : 9,
-            'notification_minute' => isset($_POST['notification_minute']) ? (int) $_POST['notification_minute'] : 0,
-            'notification_timezone' => isset($_POST['notification_timezone']) ? wp_unslash($_POST['notification_timezone']) : InSkill_Recall_Auth::DEFAULT_NOTIFICATION_TIMEZONE,
-            'notifications_weekend' => !empty($_POST['notifications_weekend']) ? 1 : 0,
+            'email'                  => isset($_POST['email']) ? wp_unslash($_POST['email']) : '',
+            'first_name'             => isset($_POST['first_name']) ? wp_unslash($_POST['first_name']) : '',
+            'last_name'              => isset($_POST['last_name']) ? wp_unslash($_POST['last_name']) : '',
+            'status'                 => isset($_POST['status']) ? wp_unslash($_POST['status']) : 'active',
+            'notification_hour'      => isset($_POST['notification_hour']) ? (int) $_POST['notification_hour'] : 9,
+            'notification_minute'    => isset($_POST['notification_minute']) ? (int) $_POST['notification_minute'] : 0,
+            'notification_timezone'  => isset($_POST['notification_timezone']) ? wp_unslash($_POST['notification_timezone']) : InSkill_Recall_Auth::DEFAULT_NOTIFICATION_TIMEZONE,
+            'notifications_weekend'  => !empty($_POST['notifications_weekend']) ? 1 : 0,
         ];
 
         if ($user_id > 0) {
@@ -151,11 +150,11 @@ class InSkill_Recall_Admin_Actions {
         $group_id = isset($_POST['group_id']) ? (int) $_POST['group_id'] : 0;
 
         $data = [
-            'name' => isset($_POST['name']) ? wp_unslash($_POST['name']) : '',
-            'description' => isset($_POST['description']) ? wp_unslash($_POST['description']) : '',
-            'start_date' => isset($_POST['start_date']) ? wp_unslash($_POST['start_date']) : '',
-            'status' => isset($_POST['status']) ? wp_unslash($_POST['status']) : 'active',
-            'leaderboard_mode' => isset($_POST['leaderboard_mode']) ? wp_unslash($_POST['leaderboard_mode']) : 'B',
+            'name'                => isset($_POST['name']) ? wp_unslash($_POST['name']) : '',
+            'description'         => isset($_POST['description']) ? wp_unslash($_POST['description']) : '',
+            'start_date'          => isset($_POST['start_date']) ? wp_unslash($_POST['start_date']) : '',
+            'status'              => isset($_POST['status']) ? wp_unslash($_POST['status']) : 'active',
+            'leaderboard_mode'    => isset($_POST['leaderboard_mode']) ? wp_unslash($_POST['leaderboard_mode']) : 'B',
             'question_order_mode' => isset($_POST['question_order_mode']) ? wp_unslash($_POST['question_order_mode']) : 'ordered',
         ];
 
@@ -200,7 +199,7 @@ class InSkill_Recall_Admin_Actions {
         $new_group_id = $this->repository->duplicate_group($group_id);
 
         $this->redirect('inskill-recall-groups', [
-            'message' => $new_group_id > 0 ? 'group_duplicated' : 'group_duplicate_error',
+            'message'    => $new_group_id > 0 ? 'group_duplicated' : 'group_duplicate_error',
             'edit_group' => $new_group_id > 0 ? $new_group_id : 0,
         ]);
     }
@@ -210,14 +209,14 @@ class InSkill_Recall_Admin_Actions {
         $creation_mode = isset($_POST['question_creation_mode']) ? sanitize_key(wp_unslash($_POST['question_creation_mode'])) : 'new';
 
         $data = [
-            'group_id' => isset($_POST['group_id']) ? (int) $_POST['group_id'] : 0,
+            'group_id'       => isset($_POST['group_id']) ? (int) $_POST['group_id'] : 0,
             'internal_label' => '',
-            'question_type' => isset($_POST['question_type']) ? wp_unslash($_POST['question_type']) : 'qcu',
-            'question_text' => isset($_POST['question_text']) ? wp_unslash($_POST['question_text']) : '',
-            'explanation' => isset($_POST['explanation']) ? wp_unslash($_POST['explanation']) : '',
-            'image_id' => isset($_POST['image_id']) ? (int) $_POST['image_id'] : null,
-            'image_url' => isset($_POST['image_url']) ? wp_unslash($_POST['image_url']) : '',
-            'status' => isset($_POST['status']) ? wp_unslash($_POST['status']) : 'active',
+            'question_type'  => isset($_POST['question_type']) ? wp_unslash($_POST['question_type']) : 'qcu',
+            'question_text'  => isset($_POST['question_text']) ? wp_unslash($_POST['question_text']) : '',
+            'explanation'    => isset($_POST['explanation']) ? wp_unslash($_POST['explanation']) : '',
+            'image_id'       => isset($_POST['image_id']) ? (int) $_POST['image_id'] : null,
+            'image_url'      => isset($_POST['image_url']) ? wp_unslash($_POST['image_url']) : '',
+            'status'         => isset($_POST['status']) ? wp_unslash($_POST['status']) : 'active',
         ];
 
         $choice_texts = isset($_POST['choice_text']) ? (array) $_POST['choice_text'] : [];
@@ -227,7 +226,7 @@ class InSkill_Recall_Admin_Actions {
         foreach ($choice_texts as $index => $text) {
             $choices[] = [
                 'choice_text' => wp_unslash($text),
-                'is_correct' => isset($choice_correct[$index]) ? 1 : 0,
+                'is_correct'  => isset($choice_correct[$index]) ? 1 : 0,
             ];
         }
 
@@ -235,9 +234,9 @@ class InSkill_Recall_Admin_Actions {
         $validation = $this->repository->validate_question_payload($data, $choices, $is_locked);
         if (is_wp_error($validation)) {
             $this->redirect('inskill-recall-questions', [
-                'message' => 'question_validation_error',
+                'message'      => 'question_validation_error',
                 'error_detail' => rawurlencode($validation->get_error_message()),
-                'edit_question' => $question_id > 0 ? $question_id : 0,
+                'edit_question'=> $question_id > 0 ? $question_id : 0,
             ]);
         }
 
@@ -258,9 +257,9 @@ class InSkill_Recall_Admin_Actions {
             $updated = $this->repository->update_question($question_id, $data, $choices);
             if (is_wp_error($updated)) {
                 $this->redirect('inskill-recall-questions', [
-                    'message' => 'question_validation_error',
+                    'message'      => 'question_validation_error',
                     'error_detail' => rawurlencode($updated->get_error_message()),
-                    'edit_question' => $question_id,
+                    'edit_question'=> $question_id,
                 ]);
             }
 
@@ -270,7 +269,7 @@ class InSkill_Recall_Admin_Actions {
         $new_question_id = $this->repository->create_question($data, $choices);
         if (is_wp_error($new_question_id)) {
             $this->redirect('inskill-recall-questions', [
-                'message' => 'question_validation_error',
+                'message'      => 'question_validation_error',
                 'error_detail' => rawurlencode($new_question_id->get_error_message()),
             ]);
         }
@@ -337,5 +336,44 @@ class InSkill_Recall_Admin_Actions {
         }
 
         $this->redirect('inskill-recall-notifications', ['message' => 'notification_logs_cleared']);
+    }
+
+    private function send_test_push_notification() {
+        $target_user_id = isset($_POST['test_push_user_id']) ? (int) $_POST['test_push_user_id'] : 0;
+
+        if ($target_user_id <= 0) {
+            $this->redirect('inskill-recall-notifications', ['message' => 'test_push_invalid_user']);
+        }
+
+        $user = $this->repository->get_user($target_user_id);
+        if (!$user) {
+            $this->redirect('inskill-recall-notifications', ['message' => 'test_push_invalid_user']);
+        }
+
+        $target_url = InSkill_Recall_Frontend::get_user_dashboard_url($user);
+        if ($target_url === '') {
+            $target_url = home_url('/');
+        }
+
+        $payload = [
+            'title' => 'TEST PUSH',
+            'body'  => 'Si vous voyez cette notification, le push fonctionne.',
+            'url'   => $target_url,
+            'tag'   => 'inskill-recall-manual-test-' . $target_user_id,
+        ];
+
+        $sent = InSkill_Recall_Push::send_test_to_user($target_user_id, $payload);
+
+        if ($sent) {
+            $this->redirect('inskill-recall-notifications', [
+                'message'           => 'test_push_sent',
+                'test_push_user_id' => $target_user_id,
+            ]);
+        }
+
+        $this->redirect('inskill-recall-notifications', [
+            'message'           => 'test_push_error',
+            'test_push_user_id' => $target_user_id,
+        ]);
     }
 }
