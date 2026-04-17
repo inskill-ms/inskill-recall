@@ -54,6 +54,9 @@ class InSkill_Recall_Admin_Actions {
             case 'save_notification_settings':
                 $this->save_notification_settings();
                 break;
+            case 'clear_notification_logs':
+                $this->clear_notification_logs();
+                break;
         }
     }
 
@@ -321,5 +324,18 @@ class InSkill_Recall_Admin_Actions {
         }
 
         $this->redirect('inskill-recall-notifications', ['message' => 'notifications_saved']);
+    }
+
+    private function clear_notification_logs() {
+        global $wpdb;
+
+        $table = InSkill_Recall_DB::table('notification_logs');
+        $deleted = $wpdb->query("TRUNCATE TABLE {$table}");
+
+        if ($deleted === false) {
+            $this->redirect('inskill-recall-notifications', ['message' => 'notification_logs_clear_error']);
+        }
+
+        $this->redirect('inskill-recall-notifications', ['message' => 'notification_logs_cleared']);
     }
 }

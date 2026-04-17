@@ -39,11 +39,11 @@ class InSkill_Recall_Frontend extends InSkill_Recall_Frontend_Dashboard {
         $user_timezone_label = !empty($preferences['timezone_label']) ? (string) $preferences['timezone_label'] : $user_timezone;
 
         return [
-            'system_timestamp' => (int) InSkill_Recall_Time::now_timestamp(),
-            'system_timezone' => (string) $system_timezone,
+            'system_timestamp'    => (int) InSkill_Recall_Time::now_timestamp(),
+            'system_timezone'     => (string) $system_timezone,
             'system_is_simulated' => InSkill_Recall_Time::is_test_mode_enabled() ? 1 : 0,
-            'user_timestamp' => time(),
-            'user_timezone' => $user_timezone,
+            'user_timestamp'      => (int) InSkill_Recall_Time::now_timestamp(),
+            'user_timezone'       => $user_timezone,
             'user_timezone_label' => $user_timezone_label,
         ];
     }

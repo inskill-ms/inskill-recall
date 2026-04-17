@@ -40,6 +40,31 @@ class InSkill_Recall_Admin_Page_Notifications {
         ));
     }
 
+    private function render_notice() {
+        if (empty($_GET['message'])) {
+            return;
+        }
+
+        $message = sanitize_text_field(wp_unslash($_GET['message']));
+
+        $map = [
+            'notifications_saved'           => 'Réglages notifications enregistrés.',
+            'notification_logs_cleared'     => 'Historique des notifications vidé avec succès.',
+            'notification_logs_clear_error' => 'Impossible de vider l’historique des notifications.',
+        ];
+
+        if (!isset($map[$message])) {
+            return;
+        }
+
+        $class = 'notice notice-success is-dismissible';
+        if (in_array($message, ['notification_logs_clear_error'], true)) {
+            $class = 'notice notice-error is-dismissible';
+        }
+
+        echo '<div class="' . esc_attr($class) . '"><p>' . esc_html($map[$message]) . '</p></div>';
+    }
+
     public function render() {
         $summary = $this->repository->get_notification_summary();
         $logs = $this->repository->get_notification_logs(100);
@@ -53,14 +78,10 @@ class InSkill_Recall_Admin_Page_Notifications {
         $vapid_subject = (string) get_option('inskill_recall_vapid_subject', 'mailto:contact@example.com');
         $vapid_public_key = (string) get_option('inskill_recall_vapid_public_key', '');
         $vapid_private_key = (string) get_option('inskill_recall_vapid_private_key', '');
-
         ?>
         <div class="wrap">
             <h1>InSkill Recall — Notifications</h1>
-
-            <?php if (!empty($_GET['message']) && sanitize_text_field(wp_unslash($_GET['message'])) === 'notifications_saved') : ?>
-                <div class="notice notice-success is-dismissible"><p>Réglages notifications enregistrés.</p></div>
-            <?php endif; ?>
+            <?php $this->render_notice(); ?>
 
             <div style="display:grid;grid-template-columns:minmax(360px,520px) 1fr;gap:24px;align-items:start;">
                 <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;">
@@ -145,42 +166,54 @@ class InSkill_Recall_Admin_Page_Notifications {
                     </div>
 
                     <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;">
-                        <h2 style="margin-top:0;">Historique des notifications envoyées</h2>
-                        <p style="margin-top:0;color:#646970;">Cette section liste les notifications réellement envoyées ou en erreur. Elle ne correspond pas à la liste des appareils abonnés.</p>
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+                            <div>
+                                <h2 style="margin:0;">Historique des notifications envoyées</h2>
+                                <p style="margin:8px 0 0 0;color:#646970;">Cette section liste les notifications réellement envoyées ou en erreur. Elle ne correspond pas à la liste des appareils abonnés.</p>
+                            </div>
 
-                        <table class="widefat striped">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Utilisateur</th>
-                                    <th>Groupe</th>
-                                    <th>Type</th>
-                                    <th>Statut</th>
-                                    <th>Message</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (empty($logs)) : ?>
-                                    <tr><td colspan="6">Aucune notification journalisée.</td></tr>
-                                <?php else : ?>
-                                    <?php foreach ($logs as $log) : ?>
-                                        <tr>
-                                            <td><?php echo esc_html($log->sent_at); ?></td>
-                                            <td><?php echo esc_html($this->get_user_label($log)); ?></td>
-                                            <td><?php echo esc_html($log->group_name ?: '—'); ?></td>
-                                            <td><?php echo esc_html($log->notification_type); ?></td>
-                                            <td><?php echo esc_html($log->status); ?></td>
-                                            <td><?php echo esc_html(wp_trim_words($log->body, 12)); ?></td>
-                                        </tr>
-                                        <?php if (!empty($log->error_message)) : ?>
+                            <form method="post" onsubmit="return confirm('Voulez-vous vraiment vider tout l’historique des notifications envoyées ?');" style="margin:0;">
+                                <?php wp_nonce_field('inskill_recall_admin_action'); ?>
+                                <input type="hidden" name="inskill_recall_action" value="clear_notification_logs">
+                                <button type="submit" class="button button-secondary">Vider l’historique</button>
+                            </form>
+                        </div>
+
+                        <div style="max-height:420px;overflow:auto;border:1px solid #dcdcde;border-radius:10px;">
+                            <table class="widefat striped" style="margin:0;border:none;">
+                                <thead style="position:sticky;top:0;background:#fff;z-index:1;">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Utilisateur</th>
+                                        <th>Groupe</th>
+                                        <th>Type</th>
+                                        <th>Statut</th>
+                                        <th>Message</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($logs)) : ?>
+                                        <tr><td colspan="6">Aucune notification journalisée.</td></tr>
+                                    <?php else : ?>
+                                        <?php foreach ($logs as $log) : ?>
                                             <tr>
-                                                <td colspan="6"><strong>Erreur :</strong> <?php echo esc_html($log->error_message); ?></td>
+                                                <td><?php echo esc_html($log->sent_at); ?></td>
+                                                <td><?php echo esc_html($this->get_user_label($log)); ?></td>
+                                                <td><?php echo esc_html($log->group_name ?: '—'); ?></td>
+                                                <td><?php echo esc_html($log->notification_type); ?></td>
+                                                <td><?php echo esc_html($log->status); ?></td>
+                                                <td><?php echo esc_html(wp_trim_words($log->body, 12)); ?></td>
                                             </tr>
-                                        <?php endif; ?>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
+                                            <?php if (!empty($log->error_message)) : ?>
+                                                <tr>
+                                                    <td colspan="6"><strong>Erreur :</strong> <?php echo esc_html($log->error_message); ?></td>
+                                                </tr>
+                                            <?php endif; ?>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
