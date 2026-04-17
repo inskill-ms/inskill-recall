@@ -82,6 +82,10 @@ class InSkill_Recall_Admin_Page_Notifications {
         $vapid_subject = (string) get_option('inskill_recall_vapid_subject', 'mailto:contact@example.com');
         $vapid_public_key = (string) get_option('inskill_recall_vapid_public_key', '');
         $vapid_private_key = (string) get_option('inskill_recall_vapid_private_key', '');
+        $cron_mode = InSkill_Recall_V2_Cron::get_cron_mode();
+        $cron_token = InSkill_Recall_V2_Cron::get_external_cron_token();
+        $cron_endpoint = InSkill_Recall_V2_Cron::get_external_cron_endpoint_url();
+        $cron_command = '5-59/5 * * * * /usr/bin/curl -fsS "' . $cron_endpoint . '?token=' . rawurlencode($cron_token) . '&ts=$(/bin/date +\%s)" > /dev/null 2>&1';
 
         $selected_test_user_id = isset($_GET['test_push_user_id']) ? (int) $_GET['test_push_user_id'] : 0;
         if ($selected_test_user_id <= 0 && !empty($users)) {
@@ -92,35 +96,227 @@ class InSkill_Recall_Admin_Page_Notifications {
             <h1>InSkill Recall — Notifications</h1>
             <?php $this->render_notice(); ?>
 
-            <div style="display:grid;grid-template-columns:minmax(360px,520px) 1fr;gap:24px;align-items:start;">
-                <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;">
-                    <h2 style="margin-top:0;">Réglages</h2>
+            <style>
+                .inskill-notif-grid {
+                    display: grid;
+                    grid-template-columns: minmax(380px, 520px) 1fr;
+                    gap: 24px;
+                    align-items: start;
+                }
+                .inskill-card {
+                    background: #fff;
+                    border: 1px solid #dcdcde;
+                    border-radius: 12px;
+                    padding: 20px;
+                    box-sizing: border-box;
+                }
+                .inskill-card + .inskill-card {
+                    margin-top: 24px;
+                }
+                .inskill-card h2 {
+                    margin-top: 0;
+                    margin-bottom: 8px;
+                }
+                .inskill-card-intro {
+                    margin: 0 0 18px 0;
+                    color: #646970;
+                    line-height: 1.5;
+                }
+                .inskill-form-grid {
+                    display: grid;
+                    gap: 16px;
+                }
+                .inskill-field-row {
+                    display: grid;
+                    gap: 8px;
+                }
+                .inskill-field-row label,
+                .inskill-field-row .inskill-field-label {
+                    display: block;
+                    font-weight: 600;
+                }
+                .inskill-field-row .description {
+                    margin: 0;
+                    color: #646970;
+                }
+                .inskill-field-row textarea,
+                .inskill-field-row input[type="text"],
+                .inskill-field-row select {
+                    width: 100%;
+                    max-width: 100%;
+                }
+                .inskill-radio-stack {
+                    display: grid;
+                    gap: 10px;
+                    margin-top: 4px;
+                }
+                .inskill-radio-option {
+                    display: block;
+                    border: 1px solid #dcdcde;
+                    border-radius: 10px;
+                    padding: 12px 14px;
+                    background: #fff;
+                }
+                .inskill-radio-option input {
+                    margin-right: 8px;
+                    margin-top: 1px;
+                }
+                .inskill-radio-title {
+                    font-weight: 600;
+                }
+                .inskill-radio-help {
+                    margin: 6px 0 0 24px;
+                    color: #646970;
+                    line-height: 1.45;
+                }
+                .inskill-code-box {
+                    width: 100%;
+                    max-width: 100%;
+                    min-height: 68px;
+                    font-family: Consolas, Monaco, monospace;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                    overflow-wrap: anywhere;
+                    resize: vertical;
+                }
+                .inskill-code-box.is-single-line {
+                    min-height: 54px;
+                }
+                .inskill-summary-list {
+                    display: grid;
+                    grid-template-columns: repeat(2, minmax(180px, 1fr));
+                    gap: 12px;
+                    margin: 0;
+                }
+                .inskill-summary-item {
+                    border: 1px solid #dcdcde;
+                    border-radius: 10px;
+                    padding: 14px;
+                    background: #f6f7f7;
+                }
+                .inskill-summary-item strong {
+                    display: block;
+                    font-size: 24px;
+                    line-height: 1.2;
+                    margin-bottom: 4px;
+                }
+                .inskill-summary-item span {
+                    color: #646970;
+                }
+                .inskill-inline-form {
+                    display: flex;
+                    gap: 12px;
+                    align-items: end;
+                    flex-wrap: wrap;
+                }
+                .inskill-inline-form .inskill-field-row {
+                    flex: 1 1 320px;
+                }
+                .inskill-scroll-table {
+                    max-height: 420px;
+                    overflow: auto;
+                    border: 1px solid #dcdcde;
+                    border-radius: 10px;
+                }
+                .inskill-scroll-table table {
+                    margin: 0;
+                    border: none;
+                }
+                .inskill-scroll-table thead th {
+                    position: sticky;
+                    top: 0;
+                    background: #fff;
+                    z-index: 1;
+                }
+                .inskill-external-only[hidden] {
+                    display: none !important;
+                }
+                @media (max-width: 1280px) {
+                    .inskill-notif-grid {
+                        grid-template-columns: 1fr;
+                    }
+                }
+                @media (max-width: 782px) {
+                    .inskill-summary-list {
+                        grid-template-columns: 1fr;
+                    }
+                }
+            </style>
 
+            <div class="inskill-notif-grid">
+                <div>
                     <form method="post">
                         <?php wp_nonce_field('inskill_recall_admin_action'); ?>
                         <input type="hidden" name="inskill_recall_action" value="save_notification_settings">
 
-                        <table class="form-table" role="presentation">
-                            <tr>
-                                <th><label for="vapid_subject">VAPID subject</label></th>
-                                <td><input type="text" class="regular-text" name="vapid_subject" id="vapid_subject" value="<?php echo esc_attr($vapid_subject); ?>"></td>
-                            </tr>
-                            <tr>
-                                <th><label for="vapid_public_key">VAPID public key</label></th>
-                                <td><textarea class="large-text code" rows="4" name="vapid_public_key" id="vapid_public_key"><?php echo esc_textarea($vapid_public_key); ?></textarea></td>
-                            </tr>
-                            <tr>
-                                <th><label for="vapid_private_key">VAPID private key</label></th>
-                                <td><textarea class="large-text code" rows="4" name="vapid_private_key" id="vapid_private_key"><?php echo esc_textarea($vapid_private_key); ?></textarea></td>
-                            </tr>
-                            <tr>
-                                <th><label for="allowed_timezones">Fuseaux autorisés</label></th>
-                                <td>
+                        <div class="inskill-card">
+                            <h2>Configuration push</h2>
+                            <p class="inskill-card-intro">Paramètres VAPID et fuseaux autorisés pour les notifications web push.</p>
+
+                            <div class="inskill-form-grid">
+                                <div class="inskill-field-row">
+                                    <label for="vapid_subject">VAPID subject</label>
+                                    <input type="text" class="regular-text" name="vapid_subject" id="vapid_subject" value="<?php echo esc_attr($vapid_subject); ?>">
+                                </div>
+
+                                <div class="inskill-field-row">
+                                    <label for="vapid_public_key">VAPID public key</label>
+                                    <textarea class="large-text code" rows="4" name="vapid_public_key" id="vapid_public_key"><?php echo esc_textarea($vapid_public_key); ?></textarea>
+                                </div>
+
+                                <div class="inskill-field-row">
+                                    <label for="vapid_private_key">VAPID private key</label>
+                                    <textarea class="large-text code" rows="4" name="vapid_private_key" id="vapid_private_key"><?php echo esc_textarea($vapid_private_key); ?></textarea>
+                                </div>
+
+                                <div class="inskill-field-row">
+                                    <label for="allowed_timezones">Fuseaux autorisés</label>
                                     <textarea class="large-text code" rows="8" name="allowed_timezones" id="allowed_timezones"><?php echo esc_textarea($allowed_timezones); ?></textarea>
                                     <p class="description">Format : Libellé|Identifiant timezone, une ligne par fuseau.</p>
-                                </td>
-                            </tr>
-                        </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="inskill-card">
+                            <h2>Déclenchement du cron</h2>
+                            <p class="inskill-card-intro">Un seul mode doit être actif à la fois. Le moteur V2 n’accepte que la source correspondant au mode sélectionné.</p>
+
+                            <div class="inskill-form-grid">
+                                <div class="inskill-field-row">
+                                    <div class="inskill-field-label">Mode actif</div>
+                                    <div class="inskill-radio-stack">
+                                        <label class="inskill-radio-option">
+                                            <input type="radio" name="cron_mode" value="<?php echo esc_attr(InSkill_Recall_V2_Cron::CRON_MODE_WP); ?>" <?php checked($cron_mode, InSkill_Recall_V2_Cron::CRON_MODE_WP); ?>>
+                                            <span class="inskill-radio-title">Cron WordPress / hébergement (wp-cron.php)</span>
+                                            <p class="inskill-radio-help">Mode compatible avec le cron OVH qui exécute directement <code>wp-cron.php</code>.</p>
+                                        </label>
+                                        <label class="inskill-radio-option">
+                                            <input type="radio" name="cron_mode" value="<?php echo esc_attr(InSkill_Recall_V2_Cron::CRON_MODE_EXTERNAL_VPS); ?>" <?php checked($cron_mode, InSkill_Recall_V2_Cron::CRON_MODE_EXTERNAL_VPS); ?>>
+                                            <span class="inskill-radio-title">Cron externe VPS Oracle (endpoint sécurisé)</span>
+                                            <p class="inskill-radio-help">Mode recommandé pour un déclenchement plus précis. Les appels via <code>wp-cron.php</code> sont alors ignorés par le moteur V2.</p>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="inskill-field-row inskill-external-only" data-external-only>
+                                    <label for="cron_token">Token cron externe</label>
+                                    <input type="text" class="large-text code" name="cron_token" id="cron_token" value="<?php echo esc_attr($cron_token); ?>">
+                                    <p class="description">Token secret obligatoire pour le mode VPS externe. S’il est vide ou invalide, un nouveau token robuste sera généré à l’enregistrement.</p>
+                                </div>
+
+                                <div class="inskill-field-row inskill-external-only" data-external-only>
+                                    <label for="inskill-cron-endpoint">Endpoint VPS externe</label>
+                                    <textarea id="inskill-cron-endpoint" class="inskill-code-box is-single-line" readonly><?php echo esc_textarea($cron_endpoint . '?token=' . $cron_token); ?></textarea>
+                                    <p class="description">URL sécurisée à appeler depuis le VPS quand le mode externe est actif.</p>
+                                </div>
+
+                                <div class="inskill-field-row inskill-external-only" data-external-only>
+                                    <label for="inskill-cron-command">Commande cron VPS recommandée</label>
+                                    <textarea id="inskill-cron-command" class="inskill-code-box" readonly><?php echo esc_textarea($cron_command); ?></textarea>
+                                    <p class="description">Exemple production prévu pour un déclenchement toutes les 5 minutes à partir de <code>:05</code>. Le paramètre <code>ts</code> est volontairement ajouté pour éviter le cache CDN.</p>
+                                </div>
+                            </div>
+                        </div>
 
                         <p>
                             <button type="submit" class="button button-primary">Enregistrer</button>
@@ -129,29 +325,39 @@ class InSkill_Recall_Admin_Page_Notifications {
                 </div>
 
                 <div>
-                    <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;margin-bottom:24px;">
-                        <h2 style="margin-top:0;">Résumé</h2>
-                        <ul style="margin:0 0 0 18px;">
-                            <li>Appareils enregistrés : <?php echo esc_html($summary['subscriptions_total']); ?></li>
-                            <li>Appareils actifs : <?php echo esc_html($summary['subscriptions_active']); ?></li>
-                            <li>Notifications journalisées : <?php echo esc_html($summary['logs_total']); ?></li>
-                            <li>Notifications envoyées avec succès : <?php echo esc_html($summary['logs_sent']); ?></li>
-                        </ul>
+                    <div class="inskill-card">
+                        <h2>Résumé</h2>
+                        <div class="inskill-summary-list">
+                            <div class="inskill-summary-item">
+                                <strong><?php echo esc_html($summary['subscriptions_total']); ?></strong>
+                                <span>Appareils enregistrés</span>
+                            </div>
+                            <div class="inskill-summary-item">
+                                <strong><?php echo esc_html($summary['subscriptions_active']); ?></strong>
+                                <span>Appareils actifs</span>
+                            </div>
+                            <div class="inskill-summary-item">
+                                <strong><?php echo esc_html($summary['logs_total']); ?></strong>
+                                <span>Notifications journalisées</span>
+                            </div>
+                            <div class="inskill-summary-item">
+                                <strong><?php echo esc_html($summary['logs_sent']); ?></strong>
+                                <span>Notifications envoyées avec succès</span>
+                            </div>
+                        </div>
                     </div>
 
-                    <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;margin-bottom:24px;">
-                        <h2 style="margin-top:0;">Test push admin</h2>
-                        <p style="margin:8px 0 16px 0;color:#646970;">
-                            Ce test envoie une notification push de vérification à l’utilisateur sélectionné sans impacter la logique métier quotidienne.
-                        </p>
+                    <div class="inskill-card">
+                        <h2>Test push admin</h2>
+                        <p class="inskill-card-intro">Ce test envoie une notification push de vérification à l’utilisateur sélectionné sans impacter la logique métier quotidienne.</p>
 
-                        <form method="post" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+                        <form method="post" class="inskill-inline-form">
                             <?php wp_nonce_field('inskill_recall_admin_action'); ?>
                             <input type="hidden" name="inskill_recall_action" value="send_test_push_notification">
 
-                            <div>
-                                <label for="test_push_user_id" style="display:block;font-weight:600;margin-bottom:6px;">Utilisateur cible</label>
-                                <select name="test_push_user_id" id="test_push_user_id" style="min-width:320px;">
+                            <div class="inskill-field-row">
+                                <label for="test_push_user_id">Utilisateur cible</label>
+                                <select name="test_push_user_id" id="test_push_user_id">
                                     <?php if (empty($users)) : ?>
                                         <option value="0">Aucun utilisateur disponible</option>
                                     <?php else : ?>
@@ -181,8 +387,8 @@ class InSkill_Recall_Admin_Page_Notifications {
                         </form>
                     </div>
 
-                    <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;margin-bottom:24px;">
-                        <h2 style="margin-top:0;">Appareils abonnés</h2>
+                    <div class="inskill-card">
+                        <h2>Appareils abonnés</h2>
 
                         <table class="widefat striped">
                             <thead>
@@ -216,7 +422,7 @@ class InSkill_Recall_Admin_Page_Notifications {
                         </table>
                     </div>
 
-                    <div style="background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;">
+                    <div class="inskill-card">
                         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
                             <div>
                                 <h2 style="margin:0;">Historique des notifications envoyées</h2>
@@ -230,9 +436,9 @@ class InSkill_Recall_Admin_Page_Notifications {
                             </form>
                         </div>
 
-                        <div style="max-height:420px;overflow:auto;border:1px solid #dcdcde;border-radius:10px;">
-                            <table class="widefat striped" style="margin:0;border:none;">
-                                <thead style="position:sticky;top:0;background:#fff;z-index:1;">
+                        <div class="inskill-scroll-table">
+                            <table class="widefat striped">
+                                <thead>
                                     <tr>
                                         <th>Date</th>
                                         <th>Utilisateur</th>
@@ -268,6 +474,36 @@ class InSkill_Recall_Admin_Page_Notifications {
                     </div>
                 </div>
             </div>
+
+            <script>
+                (function () {
+                    const radios = document.querySelectorAll('input[name="cron_mode"]');
+                    const externalRows = document.querySelectorAll('[data-external-only]');
+                    if (!radios.length || !externalRows.length) {
+                        return;
+                    }
+
+                    function refreshCronModeUi() {
+                        let current = '';
+                        radios.forEach(function (radio) {
+                            if (radio.checked) {
+                                current = radio.value;
+                            }
+                        });
+
+                        const isExternal = current === '<?php echo esc_js(InSkill_Recall_V2_Cron::CRON_MODE_EXTERNAL_VPS); ?>';
+                        externalRows.forEach(function (row) {
+                            row.hidden = !isExternal;
+                        });
+                    }
+
+                    radios.forEach(function (radio) {
+                        radio.addEventListener('change', refreshCronModeUi);
+                    });
+
+                    refreshCronModeUi();
+                })();
+            </script>
         </div>
         <?php
     }

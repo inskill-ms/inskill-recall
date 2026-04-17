@@ -9,10 +9,24 @@ class InSkill_Recall_V2_Cron {
     const DAILY_CLOSE_OPTION = 'inskill_recall_v2_last_daily_close_date';
     const MIDDAY_OPTION = 'inskill_recall_v2_last_midday_downgrade_date';
     const LOCK_OPTION = 'inskill_recall_v2_cron_lock';
+    const DAILY_WINDOW_EARLY_MINUTES = 5;
+    const DAILY_WINDOW_LATE_MINUTES = 59;
+    const DOWNGRADE_ALERT_HOUR = 18;
+    const DOWNGRADE_ALERT_MINUTE = 0;
+    const DOWNGRADE_WINDOW_EARLY_MINUTES = 5;
+    const DOWNGRADE_WINDOW_LATE_MINUTES = 59;
+
+    const CRON_MODE_OPTION = 'inskill_recall_cron_mode';
+    const CRON_TOKEN_OPTION = 'inskill_recall_cron_token';
+    const CRON_MODE_WP = 'wp_cron';
+    const CRON_MODE_EXTERNAL_VPS = 'external_vps';
+    const REST_NAMESPACE = 'inskill-recall/v1';
+    const REST_ROUTE_CRON = '/cron';
 
     public function __construct() {
         add_action(self::EVENT_HOOK, [__CLASS__, 'run']);
         add_action('init', [__CLASS__, 'maybe_realign_schedule'], 20);
+        add_action('rest_api_init', [__CLASS__, 'register_rest_routes']);
     }
 
     public static function activate() {
@@ -75,6 +89,126 @@ class InSkill_Recall_V2_Cron {
         }
     }
 
+    public static function get_available_cron_modes() {
+        return [
+            self::CRON_MODE_WP => 'wp_cron',
+            self::CRON_MODE_EXTERNAL_VPS => 'external_vps',
+        ];
+    }
+
+    public static function get_cron_mode() {
+        $mode = (string) get_option(self::CRON_MODE_OPTION, self::CRON_MODE_WP);
+        if (!isset(self::get_available_cron_modes()[$mode])) {
+            return self::CRON_MODE_WP;
+        }
+
+        return $mode;
+    }
+
+    public static function sanitize_cron_mode($mode) {
+        $mode = sanitize_key((string) $mode);
+
+        if (!isset(self::get_available_cron_modes()[$mode])) {
+            return self::CRON_MODE_WP;
+        }
+
+        return $mode;
+    }
+
+    public static function generate_external_cron_token() {
+        return wp_generate_password(64, false, false);
+    }
+
+    public static function get_external_cron_token() {
+        $token = (string) get_option(self::CRON_TOKEN_OPTION, '');
+
+        if ($token === '') {
+            $token = self::generate_external_cron_token();
+            update_option(self::CRON_TOKEN_OPTION, $token, false);
+        }
+
+        return $token;
+    }
+
+    public static function sanitize_external_cron_token($token) {
+        $token = preg_replace('/[^A-Za-z0-9]/', '', (string) $token);
+
+        if ($token === '' || strlen($token) < 32) {
+            return self::generate_external_cron_token();
+        }
+
+        return $token;
+    }
+
+    public static function get_external_cron_endpoint_url() {
+        return rest_url(self::REST_NAMESPACE . self::REST_ROUTE_CRON);
+    }
+
+    public static function register_rest_routes() {
+        register_rest_route(self::REST_NAMESPACE, self::REST_ROUTE_CRON, [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [__CLASS__, 'handle_external_cron_request'],
+            'permission_callback' => '__return_true',
+        ]);
+    }
+
+    protected static function normalize_trigger_source($source) {
+        return $source === self::CRON_MODE_EXTERNAL_VPS ? self::CRON_MODE_EXTERNAL_VPS : self::CRON_MODE_WP;
+    }
+
+    protected static function is_trigger_source_allowed($source) {
+        return self::get_cron_mode() === self::normalize_trigger_source($source);
+    }
+
+    protected static function log_trigger_decision($source, $allowed, array $extra = []) {
+        self::debug_log('cron_trigger', array_merge([
+            'mode' => self::get_cron_mode(),
+            'source' => self::normalize_trigger_source($source),
+            'allowed' => (bool) $allowed,
+        ], $extra));
+    }
+
+    public static function handle_external_cron_request(WP_REST_Request $request) {
+        $provided_token = sanitize_text_field((string) $request->get_param('token'));
+        $expected_token = self::get_external_cron_token();
+
+        if (!hash_equals($expected_token, $provided_token)) {
+            self::log_trigger_decision(self::CRON_MODE_EXTERNAL_VPS, false, [
+                'reason' => 'invalid_token',
+                'request_ip' => isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'])) : '',
+            ]);
+
+            return new WP_REST_Response([
+                'ok' => false,
+                'reason' => 'invalid_token',
+            ], 403);
+        }
+
+        if (!self::is_trigger_source_allowed(self::CRON_MODE_EXTERNAL_VPS)) {
+            self::log_trigger_decision(self::CRON_MODE_EXTERNAL_VPS, false, [
+                'reason' => 'mode_mismatch',
+                'request_ip' => isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'])) : '',
+            ]);
+
+            return new WP_REST_Response([
+                'ok' => false,
+                'reason' => 'mode_mismatch',
+                'mode' => self::get_cron_mode(),
+            ], 409);
+        }
+
+        self::run(self::CRON_MODE_EXTERNAL_VPS, [
+            'request_ip' => isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'])) : '',
+        ]);
+
+        return new WP_REST_Response([
+            'ok' => true,
+            'mode' => self::get_cron_mode(),
+            'source' => self::CRON_MODE_EXTERNAL_VPS,
+            'simulated_now' => InSkill_Recall_Time::now_mysql(),
+        ], 200);
+    }
+
     protected static function get_debug_log_path() {
         $upload_dir = wp_upload_dir();
         $base_dir = !empty($upload_dir['basedir']) ? $upload_dir['basedir'] : WP_CONTENT_DIR . '/uploads';
@@ -124,6 +258,150 @@ class InSkill_Recall_V2_Cron {
         }
     }
 
+    protected static function clamp_minutes_of_day($minutes) {
+        $minutes = (int) $minutes;
+
+        if ($minutes < 0) {
+            return 0;
+        }
+
+        if ($minutes > 1439) {
+            return 1439;
+        }
+
+        return $minutes;
+    }
+
+    protected static function has_sent_notification_type_on_local_date($user, $notification_type, $group_id, $local_date) {
+        global $wpdb;
+
+        if (!$user) {
+            return false;
+        }
+
+        $notification_type = sanitize_key((string) $notification_type);
+        $local_date = trim((string) $local_date);
+        $group_id = (int) $group_id;
+
+        if ($notification_type === '' || $local_date === '') {
+            return false;
+        }
+
+        $prefs = InSkill_Recall_Auth::get_notification_preferences($user);
+        $timezone = !empty($prefs['timezone']) ? (string) $prefs['timezone'] : InSkill_Recall_Auth::DEFAULT_NOTIFICATION_TIMEZONE;
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT sent_at
+             FROM " . InSkill_Recall_DB::table('notification_logs') . "
+             WHERE recall_user_id = %d
+               AND group_id = %d
+               AND notification_type = %s
+               AND status = 'sent'",
+            (int) $user->id,
+            $group_id,
+            $notification_type
+        ));
+
+        if (empty($rows)) {
+            return false;
+        }
+
+        try {
+            $tz = new DateTimeZone($timezone);
+        } catch (Exception $e) {
+            return false;
+        }
+
+        foreach ($rows as $row) {
+            if (empty($row->sent_at)) {
+                continue;
+            }
+
+            $sentTs = InSkill_Recall_Auth::local_mysql_to_timestamp((string) $row->sent_at, wp_timezone());
+            if ($sentTs === false) {
+                continue;
+            }
+
+            $sentLocalDate = wp_date('Y-m-d', $sentTs, $tz);
+            if ($sentLocalDate === $local_date) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected static function get_downgrade_notification_decision($user, $group_id) {
+        if (!$user) {
+            return [
+                'ok'     => false,
+                'reason' => 'missing_user',
+            ];
+        }
+
+        $prefs = InSkill_Recall_Auth::get_notification_preferences($user);
+        $now = self::get_user_local_now($user);
+
+        if (!$now) {
+            return [
+                'ok'     => false,
+                'reason' => 'invalid_timezone_or_now',
+                'prefs'  => $prefs,
+            ];
+        }
+
+        $dayOfWeek = (int) $now->format('N');
+        $nowMinutes = ((int) $now->format('H')) * 60 + ((int) $now->format('i'));
+        $targetMinutes = (self::DOWNGRADE_ALERT_HOUR * 60) + self::DOWNGRADE_ALERT_MINUTE;
+        $windowStartMinutes = self::clamp_minutes_of_day($targetMinutes - self::DOWNGRADE_WINDOW_EARLY_MINUTES);
+        $windowEndMinutes = self::clamp_minutes_of_day($targetMinutes + self::DOWNGRADE_WINDOW_LATE_MINUTES);
+        $localDate = $now->format('Y-m-d');
+
+        $result = [
+            'ok'                   => true,
+            'reason'               => 'ok',
+            'prefs'                => $prefs,
+            'group_id'             => (int) $group_id,
+            'local_now'            => $now->format('Y-m-d H:i:s'),
+            'local_date'           => $localDate,
+            'local_time'           => $now->format('H:i:s'),
+            'day_of_week'          => $dayOfWeek,
+            'now_minutes'          => $nowMinutes,
+            'target_minutes'       => $targetMinutes,
+            'window_start_minutes' => $windowStartMinutes,
+            'window_end_minutes'   => $windowEndMinutes,
+            'forced_datetime'      => InSkill_Recall_Time::get_forced_datetime(),
+            'wp_now'               => InSkill_Recall_Time::now_mysql(),
+            'wp_today'             => InSkill_Recall_V2_Progress_Service::today_date(),
+        ];
+
+        if (empty($prefs['allow_weekend']) && $dayOfWeek >= 6) {
+            $result['ok'] = false;
+            $result['reason'] = 'weekend_blocked';
+            return $result;
+        }
+
+        if ($nowMinutes < $windowStartMinutes) {
+            $result['ok'] = false;
+            $result['reason'] = 'before_target_time';
+            return $result;
+        }
+
+        if ($nowMinutes > $windowEndMinutes) {
+            $result['ok'] = false;
+            $result['reason'] = 'outside_notification_window';
+            return $result;
+        }
+
+        if (self::has_sent_notification_type_on_local_date($user, 'downgrade_alert', (int) $group_id, $localDate)) {
+            $result['ok'] = false;
+            $result['reason'] = 'already_sent_today';
+            return $result;
+        }
+
+        return $result;
+    }
+
     protected static function get_daily_notification_decision($user) {
         if (!$user) {
             return [
@@ -146,6 +424,8 @@ class InSkill_Recall_V2_Cron {
         $dayOfWeek = (int) $now->format('N');
         $nowMinutes = ((int) $now->format('H')) * 60 + ((int) $now->format('i'));
         $targetMinutes = ((int) $prefs['hour']) * 60 + ((int) $prefs['minute']);
+        $windowStartMinutes = self::clamp_minutes_of_day($targetMinutes - self::DAILY_WINDOW_EARLY_MINUTES);
+        $windowEndMinutes = self::clamp_minutes_of_day($targetMinutes + self::DAILY_WINDOW_LATE_MINUTES);
 
         $result = [
             'ok'               => true,
@@ -157,6 +437,8 @@ class InSkill_Recall_V2_Cron {
             'day_of_week'      => $dayOfWeek,
             'now_minutes'      => $nowMinutes,
             'target_minutes'   => $targetMinutes,
+            'window_start_minutes' => $windowStartMinutes,
+            'window_end_minutes'   => $windowEndMinutes,
             'last_notified_at' => !empty($user->last_notified_at) ? (string) $user->last_notified_at : null,
             'forced_datetime'  => InSkill_Recall_Time::get_forced_datetime(),
             'wp_now'           => InSkill_Recall_Time::now_mysql(),
@@ -169,13 +451,13 @@ class InSkill_Recall_V2_Cron {
             return $result;
         }
 
-        if ($nowMinutes < $targetMinutes) {
+        if ($nowMinutes < $windowStartMinutes) {
             $result['ok'] = false;
             $result['reason'] = 'before_target_time';
             return $result;
         }
 
-        if ($nowMinutes > ($targetMinutes + 59)) {
+        if ($nowMinutes > $windowEndMinutes) {
             $result['ok'] = false;
             $result['reason'] = 'outside_notification_window';
             return $result;
@@ -219,21 +501,35 @@ class InSkill_Recall_V2_Cron {
         return !empty($decision['ok']);
     }
 
-    public static function run() {
+    public static function run($source = self::CRON_MODE_WP, array $context = []) {
+        $source = self::normalize_trigger_source($source);
+
+        if (!self::is_trigger_source_allowed($source)) {
+            self::log_trigger_decision($source, false, array_merge([
+                'reason' => 'mode_mismatch',
+            ], $context));
+            return;
+        }
+
+        self::log_trigger_decision($source, true, $context);
+
         if (get_option(self::LOCK_OPTION)) {
             self::debug_log('cron_run_skipped_locked', [
                 'lock_option' => self::LOCK_OPTION,
+                'source'      => $source,
             ]);
             return;
         }
 
         update_option(self::LOCK_OPTION, 1, false);
 
-        self::debug_log('cron_run_start', [
+        self::debug_log('cron_run_start', array_merge([
+            'source'         => $source,
+            'mode'           => self::get_cron_mode(),
             'forced_datetime' => InSkill_Recall_Time::get_forced_datetime(),
             'wp_now'          => InSkill_Recall_Time::now_mysql(),
             'wp_today'        => InSkill_Recall_V2_Progress_Service::today_date(),
-        ]);
+        ], $context));
 
         try {
             self::run_daily_prepare_once();
@@ -243,9 +539,13 @@ class InSkill_Recall_V2_Cron {
 
             self::debug_log('cron_run_end', [
                 'status' => 'ok',
+                'source' => $source,
+                'mode'   => self::get_cron_mode(),
             ]);
         } catch (Throwable $e) {
             self::debug_log('cron_run_exception', [
+                'source'  => $source,
+                'mode'    => self::get_cron_mode(),
                 'message' => $e->getMessage(),
                 'file'    => $e->getFile(),
                 'line'    => $e->getLine(),
@@ -501,6 +801,26 @@ class InSkill_Recall_V2_Cron {
                 continue;
             }
 
+            $decision = self::get_downgrade_notification_decision($user, (int) $row->group_id);
+
+            self::debug_log('cron_downgrade_notifications_row_check', [
+                'group_id'          => (int) $row->group_id,
+                'user_id'           => (int) $row->recall_user_id,
+                'downgrade_on_date' => (string) $row->downgrade_on_date,
+                'target_date'       => (string) $targetDate,
+                'decision'          => $decision,
+            ]);
+
+            if (empty($decision['ok'])) {
+                self::debug_log('cron_downgrade_notifications_row_skipped', [
+                    'group_id' => (int) $row->group_id,
+                    'user_id'  => (int) $row->recall_user_id,
+                    'reason'   => isset($decision['reason']) ? (string) $decision['reason'] : 'unknown',
+                    'decision' => $decision,
+                ]);
+                continue;
+            }
+
             $payload = [
                 'title' => 'InSkill Recall',
                 'body'  => 'Certaines questions risquent de rétrograder demain. Pensez à les revoir.',
@@ -552,3 +872,5 @@ class InSkill_Recall_V2_Cron {
         );
     }
 }
+
+

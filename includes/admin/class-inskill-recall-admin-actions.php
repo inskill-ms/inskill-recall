@@ -322,6 +322,17 @@ class InSkill_Recall_Admin_Actions {
             update_option('inskill_recall_vapid_private_key', sanitize_text_field(wp_unslash($_POST['vapid_private_key'])));
         }
 
+        $cron_mode = isset($_POST['cron_mode'])
+            ? InSkill_Recall_V2_Cron::sanitize_cron_mode(wp_unslash($_POST['cron_mode']))
+            : InSkill_Recall_V2_Cron::CRON_MODE_WP;
+
+        $cron_token = isset($_POST['cron_token'])
+            ? InSkill_Recall_V2_Cron::sanitize_external_cron_token(wp_unslash($_POST['cron_token']))
+            : InSkill_Recall_V2_Cron::get_external_cron_token();
+
+        update_option(InSkill_Recall_V2_Cron::CRON_MODE_OPTION, $cron_mode, false);
+        update_option(InSkill_Recall_V2_Cron::CRON_TOKEN_OPTION, $cron_token, false);
+
         $this->redirect('inskill-recall-notifications', ['message' => 'notifications_saved']);
     }
 
