@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 class InSkill_Recall_DB {
-    const DB_VERSION = '0.6.3';
+    const DB_VERSION = '0.6.4';
 
     public static function table($name) {
         global $wpdb;
@@ -78,6 +78,7 @@ class InSkill_Recall_DB {
             notifications_weekend TINYINT(1) NOT NULL DEFAULT 0,
             last_access_at DATETIME NULL,
             last_notified_at DATETIME NULL,
+            last_notified_at_simulated DATETIME NULL,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             PRIMARY KEY  (id),
@@ -284,11 +285,31 @@ class InSkill_Recall_DB {
         self::drop_legacy_tables();
     }
 
+    protected static function column_exists($table_name, $column_name) {
+        global $wpdb;
+
+        $table_name = (string) $table_name;
+        $column_name = (string) $column_name;
+
+        if ($table_name === '' || $column_name === '') {
+            return false;
+        }
+
+        $sql = $wpdb->prepare("SHOW COLUMNS FROM `{$table_name}` LIKE %s", $column_name);
+        $row = $wpdb->get_row($sql);
+
+        return !empty($row);
+    }
+
     public static function run_data_migrations() {
         global $wpdb;
 
         $questions_table = self::table('questions');
         $users_table = self::table('users');
+
+        if (!self::column_exists($users_table, 'last_notified_at_simulated')) {
+            $wpdb->query("ALTER TABLE {$users_table} ADD COLUMN last_notified_at_simulated DATETIME NULL AFTER last_notified_at");
+        }
 
         $wpdb->query("UPDATE {$questions_table} SET question_type = 'qcu' WHERE question_type IS NULL OR question_type = ''");
 
@@ -360,18 +381,30 @@ class InSkill_Recall_DB {
 
         foreach ($defaults as $key => $value) {
             $option_name = 'inskill_recall_' . $key;
-
             if (get_option($option_name, null) === null) {
-                add_option($option_name, $value);
+                update_option($option_name, $value, false);
             }
+        }
+
+        if (get_option('inskill_recall_cron_mode', null) === null) {
+            update_option('inskill_recall_cron_mode', 'wp_cron', false);
+        }
+
+        if (get_option('inskill_recall_cron_token', null) === null) {
+            update_option('inskill_recall_cron_token', wp_generate_password(64, false, false), false);
         }
     }
 
-    private static function get_default_allowed_timezones_raw() {
-        return implode("
-", [
-            'Maroc - Casablanca|Africa/Casablanca',
-            'France - Paris|Europe/Paris',
-        ]);
+    public static function get_default_allowed_timezones_raw() {
+        return [
+            [
+                'value' => 'Africa/Casablanca',
+                'label' => 'Maroc - Casablanca',
+            ],
+            [
+                'value' => 'Europe/Paris',
+                'label' => 'France - Paris',
+            ],
+        ];
     }
 }

@@ -12,6 +12,28 @@ class InSkill_Recall_Push {
         return InSkill_Recall_DB::table('users');
     }
 
+    protected static function get_last_notified_column_name() {
+        if (class_exists('InSkill_Recall_Time') && InSkill_Recall_Time::is_test_mode_enabled()) {
+            return 'last_notified_at_simulated';
+        }
+
+        return 'last_notified_at';
+    }
+
+    protected static function get_last_notified_value_for_context($user) {
+        if (!$user) {
+            return null;
+        }
+
+        $column = self::get_last_notified_column_name();
+
+        if (!isset($user->{$column}) || empty($user->{$column})) {
+            return null;
+        }
+
+        return (string) $user->{$column};
+    }
+
     public static function get_vapid_subject() {
         return (string) get_option('inskill_recall_vapid_subject', 'mailto:contact@example.com');
     }
@@ -228,11 +250,14 @@ class InSkill_Recall_Push {
     public static function mark_user_notified($recall_user_id) {
         global $wpdb;
 
+        $column = self::get_last_notified_column_name();
+        $now = InSkill_Recall_Time::now_mysql();
+
         $wpdb->update(
             self::users_table(),
             [
-                'last_notified_at' => current_time('mysql'),
-                'updated_at'       => current_time('mysql'),
+                $column      => $now,
+                'updated_at' => $now,
             ],
             ['id' => (int) $recall_user_id]
         );

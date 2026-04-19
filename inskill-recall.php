@@ -31,6 +31,11 @@ require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-v2-occur
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-v2-scoring-service.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-v2-status-service.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-v2-engine.php';
+
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/cron/class-inskill-recall-v2-cron-base.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/cron/class-inskill-recall-v2-cron-decisions.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/cron/class-inskill-recall-v2-cron-runner.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/cron/class-inskill-recall-v2-cron-notifications.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-v2-cron.php';
 
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-repository.php';
