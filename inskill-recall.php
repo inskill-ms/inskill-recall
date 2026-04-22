@@ -38,8 +38,23 @@ require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/cron/class-inskill-recall-v2-
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/cron/class-inskill-recall-v2-cron-notifications.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-v2-cron.php';
 
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/repository/class-inskill-recall-admin-repository-base.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/repository/class-inskill-recall-admin-repository-dashboard.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/repository/class-inskill-recall-admin-repository-users.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/repository/class-inskill-recall-admin-repository-groups.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/repository/class-inskill-recall-admin-repository-questions.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/repository/class-inskill-recall-admin-repository-notifications.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-repository.php';
+
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/actions/class-inskill-recall-admin-actions-base.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/actions/class-inskill-recall-admin-actions-dashboard.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/actions/class-inskill-recall-admin-actions-test-time.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/actions/class-inskill-recall-admin-actions-users.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/actions/class-inskill-recall-admin-actions-groups.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/actions/class-inskill-recall-admin-actions-questions.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/actions/class-inskill-recall-admin-actions-notifications.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-actions.php';
+
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-page-dashboard.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-page-users.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-page-groups.php';

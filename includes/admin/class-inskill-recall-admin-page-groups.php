@@ -96,7 +96,6 @@ class InSkill_Recall_Admin_Page_Groups {
                                     <select name="status" id="status">
                                         <option value="active" <?php selected($edit_group->status ?? 'active', 'active'); ?>>Actif</option>
                                         <option value="inactive" <?php selected($edit_group->status ?? '', 'inactive'); ?>>Inactif</option>
-                                        <option value="deleted" <?php selected($edit_group->status ?? '', 'deleted'); ?>>Supprimé</option>
                                     </select>
                                 </td>
                             </tr>
