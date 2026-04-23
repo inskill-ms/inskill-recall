@@ -67,7 +67,106 @@ abstract class InSkill_Recall_Admin_Repository_Groups extends InSkill_Recall_Adm
     public function delete_group($group_id) {
         global $wpdb;
 
-        return false !== $wpdb->delete($this->table('groups'), ['id' => (int) $group_id]);
+        $group_id = (int) $group_id;
+        if ($group_id <= 0) {
+            return false;
+        }
+
+        $group = $this->get_group($group_id);
+        if (!$group) {
+            return false;
+        }
+
+        $questions_table = $this->table('questions');
+        $question_choices_table = $this->table('question_choices');
+        $user_question_progress_table = $this->table('user_question_progress');
+        $question_occurrences_table = $this->table('question_occurrences');
+        $user_group_stats_table = $this->table('user_group_stats');
+        $notification_logs_table = $this->table('notification_logs');
+        $group_memberships_table = $this->table('group_memberships');
+        $groups_table = $this->table('groups');
+
+        $question_ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT id FROM {$questions_table} WHERE group_id = %d",
+            $group_id
+        ));
+        $question_ids = array_values(array_filter(array_map('intval', (array) $question_ids)));
+
+        $wpdb->query('START TRANSACTION');
+
+        try {
+            $ok = true;
+
+            $result = $wpdb->delete($notification_logs_table, ['group_id' => $group_id], ['%d']);
+            if ($result === false) {
+                $ok = false;
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($user_group_stats_table, ['group_id' => $group_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($question_occurrences_table, ['group_id' => $group_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($user_question_progress_table, ['group_id' => $group_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok && !empty($question_ids)) {
+                $placeholders = implode(',', array_fill(0, count($question_ids), '%d'));
+                $sql = $wpdb->prepare(
+                    "DELETE FROM {$question_choices_table} WHERE question_id IN ({$placeholders})",
+                    $question_ids
+                );
+                $result = $wpdb->query($sql);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($questions_table, ['group_id' => $group_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($group_memberships_table, ['group_id' => $group_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($groups_table, ['id' => $group_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if (!$ok) {
+                $wpdb->query('ROLLBACK');
+                return false;
+            }
+
+            $wpdb->query('COMMIT');
+            return true;
+        } catch (Exception $e) {
+            $wpdb->query('ROLLBACK');
+            return false;
+        }
     }
 
     public function duplicate_group($group_id) {
