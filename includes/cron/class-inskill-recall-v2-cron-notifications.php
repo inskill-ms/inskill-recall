@@ -100,6 +100,27 @@ abstract class InSkill_Recall_V2_Cron_Notifications extends InSkill_Recall_V2_Cr
                     'payload'  => $payload,
                 ]);
 
+                if ($sent) {
+                    self::debug_log('cron_daily_notification_sent', [
+                        'group_id'          => (int) $group->id,
+                        'group_name'        => isset($group->name) ? (string) $group->name : '',
+                        'user_id'           => (int) $member->id,
+                        'user_email'        => !empty($user->email) ? (string) $user->email : '',
+                        'notification_type' => 'daily_routine',
+                        'payload'           => $payload,
+                    ]);
+                } else {
+                    self::debug_log('cron_daily_notification_send_error', [
+                        'group_id'          => (int) $group->id,
+                        'group_name'        => isset($group->name) ? (string) $group->name : '',
+                        'user_id'           => (int) $member->id,
+                        'user_email'        => !empty($user->email) ? (string) $user->email : '',
+                        'notification_type' => 'daily_routine',
+                        'error_message'     => 'push_send_failed',
+                        'payload'           => $payload,
+                    ]);
+                }
+
                 self::log_notification(
                     (int) $member->id,
                     (int) $group->id,
@@ -199,6 +220,27 @@ abstract class InSkill_Recall_V2_Cron_Notifications extends InSkill_Recall_V2_Cr
                 'sent'     => (bool) $sent,
                 'payload'  => $payload,
             ]);
+
+            if ($sent) {
+                self::debug_log('cron_downgrade_notification_sent', [
+                    'group_id'          => (int) $row->group_id,
+                    'user_id'           => (int) $row->recall_user_id,
+                    'notification_type' => 'downgrade_alert',
+                    'downgrade_on_date' => (string) $row->downgrade_on_date,
+                    'target_date'       => (string) $targetDate,
+                    'payload'           => $payload,
+                ]);
+            } else {
+                self::debug_log('cron_downgrade_notification_send_error', [
+                    'group_id'          => (int) $row->group_id,
+                    'user_id'           => (int) $row->recall_user_id,
+                    'notification_type' => 'downgrade_alert',
+                    'downgrade_on_date' => (string) $row->downgrade_on_date,
+                    'target_date'       => (string) $targetDate,
+                    'error_message'     => 'push_send_failed',
+                    'payload'           => $payload,
+                ]);
+            }
 
             self::log_notification(
                 (int) $row->recall_user_id,

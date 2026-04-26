@@ -384,6 +384,8 @@ class InSkill_Recall_Admin_Page_Debug_Log {
             'reasons'                => [],
             'channels'               => [],
             'notification_channels'  => [],
+            'pending_seen'           => false,
+            'has_pending_today'      => false,
             'status'                 => 'ok',
             'status_label'           => 'OK',
             'status_style'           => 'background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;',
@@ -450,6 +452,16 @@ class InSkill_Recall_Admin_Page_Debug_Log {
             foreach ($reasons as $reason) {
                 $this->increment_counter($analysis['reasons'], $reason);
             }
+
+            $pending_values = [];
+            $this->collect_payload_values_recursive($payload, 'has_pending_today', $pending_values);
+            foreach ($pending_values as $pending_value) {
+                $analysis['pending_seen'] = true;
+
+                if ((int) $pending_value === 1) {
+                    $analysis['has_pending_today'] = true;
+                }
+            }
         }
 
         ksort($analysis['channels']);
@@ -469,6 +481,14 @@ class InSkill_Recall_Admin_Page_Debug_Log {
         } elseif ($analysis['sent_count'] > 0) {
             $analysis['status'] = 'sent';
             $analysis['status_label'] = 'Notification envoyée';
+            $analysis['status_style'] = 'background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;';
+        } elseif ($analysis['pending_seen'] && $analysis['has_pending_today']) {
+            $analysis['status'] = 'warning';
+            $analysis['status_label'] = 'Warning — pending sans envoi';
+            $analysis['status_style'] = 'background:#fffbeb;color:#92400e;border:1px solid #fde68a;';
+        } elseif ($analysis['pending_seen'] && !$analysis['has_pending_today']) {
+            $analysis['status'] = 'ok_empty';
+            $analysis['status_label'] = 'OK — rien à envoyer';
             $analysis['status_style'] = 'background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;';
         } elseif ($analysis['skipped_count'] > 0) {
             $analysis['status'] = 'skipped';
