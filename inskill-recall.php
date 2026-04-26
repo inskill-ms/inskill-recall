@@ -61,6 +61,7 @@ require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-ad
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-page-questions.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-page-notifications.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-page-stats.php';
+require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/admin/class-inskill-recall-admin-page-debug-log.php';
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/class-inskill-recall-admin.php';
 
 require_once INSKILL_RECALL_PLUGIN_DIR . 'includes/frontend/class-inskill-recall-frontend-core.php';

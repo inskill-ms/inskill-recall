@@ -317,11 +317,51 @@ abstract class InSkill_Recall_Admin_Repository_Questions extends InSkill_Recall_
     public function delete_question($question_id) {
         global $wpdb;
 
+        $question_id = (int) $question_id;
+        if ($question_id <= 0) {
+            return false;
+        }
+
+        $question = $this->get_question($question_id);
+        if (!$question) {
+            return false;
+        }
+
         if ($this->question_has_activity($question_id)) {
             return false;
         }
 
-        return false !== $wpdb->delete($this->table('questions'), ['id' => (int) $question_id]);
+        $question_choices_table = $this->table('question_choices');
+        $questions_table = $this->table('questions');
+
+        $wpdb->query('START TRANSACTION');
+
+        try {
+            $ok = true;
+
+            $result = $wpdb->delete($question_choices_table, ['question_id' => $question_id], ['%d']);
+            if ($result === false) {
+                $ok = false;
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($questions_table, ['id' => $question_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if (!$ok) {
+                $wpdb->query('ROLLBACK');
+                return false;
+            }
+
+            $wpdb->query('COMMIT');
+            return true;
+        } catch (Exception $e) {
+            $wpdb->query('ROLLBACK');
+            return false;
+        }
     }
 
     public function deactivate_question($question_id) {

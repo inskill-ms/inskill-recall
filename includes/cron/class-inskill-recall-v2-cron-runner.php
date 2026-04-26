@@ -7,58 +7,73 @@ abstract class InSkill_Recall_V2_Cron_Runner extends InSkill_Recall_V2_Cron_Deci
     public static function run($source = self::CRON_MODE_WP, array $context = []) {
         $source = self::normalize_trigger_source($source);
 
-        if (!self::is_trigger_source_allowed($source)) {
-            self::log_trigger_decision($source, false, array_merge([
-                'reason' => 'mode_mismatch',
-            ], $context));
-            return;
+        $runId = isset($context['ts']) ? trim((string) $context['ts']) : '';
+        if ($runId === '') {
+            $runId = (string) time();
         }
 
-        self::log_trigger_decision($source, true, $context);
+        $context['ts'] = $runId;
 
-        if (get_option(self::LOCK_OPTION)) {
-            self::debug_log('cron_run_skipped_locked', [
-                'lock_option' => self::LOCK_OPTION,
-                'source'      => $source,
-            ]);
-            return;
-        }
-
-        update_option(self::LOCK_OPTION, 1, false);
-
-        self::debug_log('cron_run_start', array_merge([
-            'source'          => $source,
-            'mode'            => self::get_cron_mode(),
-            'forced_datetime' => InSkill_Recall_Time::get_forced_datetime(),
-            'wp_now'          => InSkill_Recall_Time::now_mysql(),
-            'wp_today'        => InSkill_Recall_V2_Progress_Service::today_date(),
-        ], $context));
+        self::set_debug_log_context([
+            'ts' => $runId,
+        ]);
 
         try {
-            self::run_daily_prepare_once();
-            self::run_midday_downgrades_once();
+            if (!self::is_trigger_source_allowed($source)) {
+                self::log_trigger_decision($source, false, array_merge([
+                    'reason' => 'mode_mismatch',
+                ], $context));
+                return;
+            }
 
-            static::send_daily_notifications();
-            static::send_downgrade_alert_notifications();
+            self::log_trigger_decision($source, true, $context);
 
-            self::debug_log('cron_run_end', [
-                'status' => 'ok',
-                'source' => $source,
-                'mode'   => self::get_cron_mode(),
-            ]);
-        } catch (Throwable $e) {
-            self::debug_log('cron_run_exception', [
-                'source'  => $source,
-                'mode'    => self::get_cron_mode(),
-                'message' => $e->getMessage(),
-                'file'    => $e->getFile(),
-                'line'    => $e->getLine(),
-                'trace'   => $e->getTraceAsString(),
-            ]);
+            if (get_option(self::LOCK_OPTION)) {
+                self::debug_log('cron_run_skipped_locked', [
+                    'lock_option' => self::LOCK_OPTION,
+                    'source'      => $source,
+                ]);
+                return;
+            }
 
-            throw $e;
+            update_option(self::LOCK_OPTION, 1, false);
+
+            self::debug_log('cron_run_start', array_merge([
+                'source'          => $source,
+                'mode'            => self::get_cron_mode(),
+                'forced_datetime' => InSkill_Recall_Time::get_forced_datetime(),
+                'wp_now'          => InSkill_Recall_Time::now_mysql(),
+                'wp_today'        => InSkill_Recall_V2_Progress_Service::today_date(),
+            ], $context));
+
+            try {
+                self::run_daily_prepare_once();
+                self::run_midday_downgrades_once();
+
+                static::send_daily_notifications();
+                static::send_downgrade_alert_notifications();
+
+                self::debug_log('cron_run_end', [
+                    'status' => 'ok',
+                    'source' => $source,
+                    'mode'   => self::get_cron_mode(),
+                ]);
+            } catch (Throwable $e) {
+                self::debug_log('cron_run_exception', [
+                    'source'  => $source,
+                    'mode'    => self::get_cron_mode(),
+                    'message' => $e->getMessage(),
+                    'file'    => $e->getFile(),
+                    'line'    => $e->getLine(),
+                    'trace'   => $e->getTraceAsString(),
+                ]);
+
+                throw $e;
+            } finally {
+                delete_option(self::LOCK_OPTION);
+            }
         } finally {
-            delete_option(self::LOCK_OPTION);
+            self::clear_debug_log_context();
         }
     }
 

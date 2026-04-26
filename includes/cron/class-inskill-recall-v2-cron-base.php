@@ -27,6 +27,11 @@ abstract class InSkill_Recall_V2_Cron_Base {
     const REST_NAMESPACE = 'inskill-recall/v1';
     const REST_ROUTE_CRON = '/cron';
 
+    const DEBUG_LOG_MAX_BYTES = 5242880;
+    const DEBUG_LOG_MAX_ROTATED_FILES = 3;
+
+    protected static $debug_log_context = [];
+
     public static function activate() {
         self::schedule_at_top_of_hour(true);
 
@@ -161,6 +166,16 @@ abstract class InSkill_Recall_V2_Cron_Base {
         ]);
     }
 
+    protected static function make_no_cache_rest_response(array $data, $status = 200) {
+        $response = new WP_REST_Response($data, (int) $status);
+
+        $response->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        $response->header('Pragma', 'no-cache');
+        $response->header('Expires', '0');
+
+        return $response;
+    }
+
     protected static function normalize_trigger_source($source) {
         $source = sanitize_key((string) $source);
 
@@ -173,6 +188,14 @@ abstract class InSkill_Recall_V2_Cron_Base {
 
     protected static function is_trigger_source_allowed($source) {
         return self::get_cron_mode() === self::normalize_trigger_source($source);
+    }
+
+    protected static function set_debug_log_context(array $context = []) {
+        self::$debug_log_context = $context;
+    }
+
+    protected static function clear_debug_log_context() {
+        self::$debug_log_context = [];
     }
 
     protected static function log_trigger_decision($source, $allowed, array $context = []) {
@@ -194,7 +217,7 @@ abstract class InSkill_Recall_V2_Cron_Base {
                 'mode'   => $mode,
             ]);
 
-            return new WP_REST_Response([
+            return self::make_no_cache_rest_response([
                 'ok'      => true,
                 'status'  => 'ignored',
                 'message' => 'Cron externe ignoré : mode inactif.',
@@ -207,7 +230,7 @@ abstract class InSkill_Recall_V2_Cron_Base {
                 'reason' => 'invalid_token',
             ]);
 
-            return new WP_REST_Response([
+            return self::make_no_cache_rest_response([
                 'ok'      => false,
                 'status'  => 'forbidden',
                 'message' => 'Token invalide.',
@@ -219,7 +242,7 @@ abstract class InSkill_Recall_V2_Cron_Base {
             'ts'      => (string) $request->get_param('ts'),
         ]);
 
-        return new WP_REST_Response([
+        return self::make_no_cache_rest_response([
             'ok'      => true,
             'status'  => 'executed',
             'message' => 'Cron externe exécuté.',
@@ -239,17 +262,70 @@ abstract class InSkill_Recall_V2_Cron_Base {
         return trailingslashit($base_dir) . 'inskill-recall-debug.log';
     }
 
+    protected static function rotate_debug_log_if_needed($path) {
+        if (!is_string($path) || $path === '' || !file_exists($path)) {
+            return;
+        }
+
+        $size = @filesize($path);
+        if ($size === false || $size < self::DEBUG_LOG_MAX_BYTES) {
+            return;
+        }
+
+        $max = (int) self::DEBUG_LOG_MAX_ROTATED_FILES;
+
+        if ($max < 1) {
+            @unlink($path);
+            return;
+        }
+
+        $oldest = $path . '.' . $max;
+        if (file_exists($oldest)) {
+            @unlink($oldest);
+        }
+
+        for ($i = $max - 1; $i >= 1; $i--) {
+            $source = $path . '.' . $i;
+            $target = $path . '.' . ($i + 1);
+
+            if (file_exists($source)) {
+                @rename($source, $target);
+            }
+        }
+
+        @rename($path, $path . '.1');
+    }
+
     protected static function debug_log($channel, array $payload = []) {
+        if (!empty(self::$debug_log_context)) {
+            $payload = array_merge(self::$debug_log_context, $payload);
+        }
+
+        $testModeEnabled = class_exists('InSkill_Recall_Time')
+            ? InSkill_Recall_Time::is_test_mode_enabled()
+            : false;
+
+        $forcedDatetime = class_exists('InSkill_Recall_Time')
+            ? InSkill_Recall_Time::get_forced_datetime()
+            : '';
+
         $line = wp_json_encode([
-            'time'    => InSkill_Recall_Time::now_mysql(),
-            'channel' => (string) $channel,
-            'payload' => $payload,
+            'time'              => class_exists('InSkill_Recall_Time') ? InSkill_Recall_Time::now_mysql() : current_time('mysql'),
+            'real_time'         => current_time('mysql'),
+            'simulated_time'    => $testModeEnabled ? $forcedDatetime : null,
+            'test_time_enabled' => (bool) $testModeEnabled,
+            'channel'           => (string) $channel,
+            'payload'           => $payload,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         if (!$line) {
             return;
         }
 
-        @file_put_contents(self::get_debug_log_path(), $line . PHP_EOL, FILE_APPEND);
+        $path = self::get_debug_log_path();
+
+        self::rotate_debug_log_if_needed($path);
+
+        @file_put_contents($path, $line . PHP_EOL, FILE_APPEND);
     }
 }

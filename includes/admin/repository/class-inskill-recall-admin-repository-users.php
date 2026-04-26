@@ -72,6 +72,86 @@ abstract class InSkill_Recall_Admin_Repository_Users extends InSkill_Recall_Admi
     public function delete_user($user_id) {
         global $wpdb;
 
-        return false !== $wpdb->delete($this->table('users'), ['id' => (int) $user_id]);
+        $user_id = (int) $user_id;
+        if ($user_id <= 0) {
+            return false;
+        }
+
+        $user = $this->get_user($user_id);
+        if (!$user) {
+            return false;
+        }
+
+        $notification_logs_table = $this->table('notification_logs');
+        $push_subscriptions_table = $this->table('push_subscriptions');
+        $user_group_stats_table = $this->table('user_group_stats');
+        $question_occurrences_table = $this->table('question_occurrences');
+        $user_question_progress_table = $this->table('user_question_progress');
+        $group_memberships_table = $this->table('group_memberships');
+        $users_table = $this->table('users');
+
+        $wpdb->query('START TRANSACTION');
+
+        try {
+            $ok = true;
+
+            $result = $wpdb->delete($notification_logs_table, ['recall_user_id' => $user_id], ['%d']);
+            if ($result === false) {
+                $ok = false;
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($push_subscriptions_table, ['recall_user_id' => $user_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($user_group_stats_table, ['recall_user_id' => $user_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($question_occurrences_table, ['recall_user_id' => $user_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($user_question_progress_table, ['recall_user_id' => $user_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($group_memberships_table, ['recall_user_id' => $user_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if ($ok) {
+                $result = $wpdb->delete($users_table, ['id' => $user_id], ['%d']);
+                if ($result === false) {
+                    $ok = false;
+                }
+            }
+
+            if (!$ok) {
+                $wpdb->query('ROLLBACK');
+                return false;
+            }
+
+            $wpdb->query('COMMIT');
+            return true;
+        } catch (Exception $e) {
+            $wpdb->query('ROLLBACK');
+            return false;
+        }
     }
 }

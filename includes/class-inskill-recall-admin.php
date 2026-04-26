@@ -12,6 +12,7 @@ class InSkill_Recall_Admin {
     private $page_questions;
     private $page_notifications;
     private $page_stats;
+    private $page_debug_log;
 
     public function __construct() {
         $this->repository         = new InSkill_Recall_Admin_Repository();
@@ -22,6 +23,7 @@ class InSkill_Recall_Admin {
         $this->page_questions     = new InSkill_Recall_Admin_Page_Questions($this->repository);
         $this->page_notifications = new InSkill_Recall_Admin_Page_Notifications($this->repository);
         $this->page_stats         = new InSkill_Recall_Admin_Page_Stats($this->repository);
+        $this->page_debug_log     = new InSkill_Recall_Admin_Page_Debug_Log($this->repository);
 
         add_action('admin_menu', [$this, 'register_menu']);
         add_action('admin_init', [$this, 'handle_actions']);
@@ -44,6 +46,7 @@ class InSkill_Recall_Admin {
         add_submenu_page('inskill-recall', 'Questions', 'Questions', 'manage_options', 'inskill-recall-questions', [$this->page_questions, 'render']);
         add_submenu_page('inskill-recall', 'Notifications', 'Notifications', 'manage_options', 'inskill-recall-notifications', [$this->page_notifications, 'render']);
         add_submenu_page('inskill-recall', 'Statistiques', 'Statistiques', 'manage_options', 'inskill-recall-stats', [$this->page_stats, 'render']);
+        add_submenu_page('inskill-recall', 'Debug log', 'Debug log', 'manage_options', 'inskill-recall-debug-log', [$this->page_debug_log, 'render']);
     }
 
     public function handle_actions() {
